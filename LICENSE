@@ -1,0 +1,160 @@
+EDUCATIONAL AND RESEARCH USE ONLY LICENSE
+
+Copyright (c) October 2025 Michael Wolak
+Email: mikewolak@gmail.com, mike@epromfoundry.com
+
+All rights reserved.
+
+================================================================================
+IMPORTANT NOTICE: NOT FOR COMMERCIAL USE
+================================================================================
+
+This software and associated documentation files (the "Project"), including but
+not limited to HDL source code, firmware source code, build scripts,
+documentation, and utilities, are provided EXCLUSIVELY for educational and
+research purposes.
+
+================================================================================
+PERMITTED USES
+================================================================================
+
+You are permitted to:
+
+1. Use the Project for personal education and learning
+2. Use the Project for academic research at accredited educational institutions
+3. Study the source code to understand FPGA design and RISC-V architecture
+4. Modify the Project for your own educational experiments
+5. Share knowledge and insights gained from studying the Project
+6. Create derivative works for educational purposes only
+
+================================================================================
+PROHIBITED USES
+================================================================================
+
+You are expressly PROHIBITED from:
+
+1. Using the Project, in whole or in part, for any commercial purpose
+2. Incorporating the Project into commercial products or services
+3. Selling, licensing, or distributing the Project for profit
+4. Using the Project in production systems or commercial environments
+5. Removing or modifying this license or copyright notices
+6. Claiming authorship of the original work
+7. Using the Project in any manner that generates revenue, directly or indirectly
+
+"Commercial purpose" includes, but is not limited to:
+- Product development for sale
+- Providing services for compensation
+- Internal use within for-profit companies or organizations
+- Integration into commercial hardware or software products
+- Use in consulting or contract work
+
+================================================================================
+ATTRIBUTION REQUIREMENTS
+================================================================================
+
+If you share, publish, or present work based on this Project:
+
+1. You MUST provide clear attribution to the original author (Michael Wolak)
+2. You MUST include a copy of this LICENSE file
+3. You MUST clearly indicate any modifications made to the original work
+4. You MUST maintain all copyright notices present in the source files
+
+================================================================================
+NO WARRANTY
+================================================================================
+
+THE PROJECT IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+IN NO EVENT SHALL THE AUTHOR OR COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE PROJECT OR THE USE
+OR OTHER DEALINGS IN THE PROJECT.
+
+================================================================================
+DISCLAIMER OF LIABILITY
+================================================================================
+
+The author makes no representations or warranties regarding:
+
+1. The accuracy, completeness, or reliability of the Project
+2. The suitability of the Project for any particular purpose
+3. The security or safety of systems built using the Project
+4. Compliance with any standards, regulations, or certifications
+
+You assume all risks associated with using, modifying, or implementing this
+Project.
+
+================================================================================
+THIRD-PARTY COMPONENTS
+================================================================================
+
+This Project incorporates or references the following third-party components,
+each subject to their own license terms:
+
+1. PicoRV32 RISC-V CPU Core
+   - Copyright (c) 2015-2023 Claire Xenia Wolf and contributors
+   - License: ISC License
+   - Source: https://github.com/YosysHQ/picorv32
+
+2. Yosys, NextPNR, IceStorm (build tools)
+   - Copyright (c) respective authors
+   - Licenses: ISC License (Yosys), ISC License (NextPNR), ISC License (IceStorm)
+   - Sources: https://github.com/YosysHQ
+
+You are responsible for complying with the license terms of all third-party
+components.
+
+================================================================================
+TERMINATION
+================================================================================
+
+This license is effective until terminated. Your rights under this license will
+terminate automatically without notice if you fail to comply with any of its
+terms.
+
+Upon termination, you must:
+1. Cease all use of the Project
+2. Destroy all copies of the Project in your possession
+3. Remove any derivative works from public distribution
+
+================================================================================
+GOVERNING LAW
+================================================================================
+
+This license shall be governed by and construed in accordance with the laws
+applicable in the jurisdiction of the copyright holder, without regard to
+conflict of law principles.
+
+================================================================================
+ENTIRE AGREEMENT
+================================================================================
+
+This license constitutes the entire agreement between you and the copyright
+holder regarding the Project and supersedes all prior or contemporaneous
+understandings.
+
+================================================================================
+CONTACT
+================================================================================
+
+For permissions beyond the scope of this license, or for questions regarding
+commercial use, please contact:
+
+Michael Wolak
+Email: mikewolak@gmail.com, mike@epromfoundry.com
+
+================================================================================
+ACKNOWLEDGMENT
+================================================================================
+
+BY USING, COPYING, MODIFYING, OR DISTRIBUTING THE PROJECT, YOU ACKNOWLEDGE
+THAT YOU HAVE READ THIS LICENSE, UNDERSTAND IT, AND AGREE TO BE BOUND BY ITS
+TERMS AND CONDITIONS.
+
+IF YOU DO NOT AGREE TO THESE TERMS, YOU ARE NOT AUTHORIZED TO USE THE PROJECT.
+
+================================================================================
+
+End of License

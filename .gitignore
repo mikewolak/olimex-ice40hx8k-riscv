@@ -1,0 +1,165 @@
+# Olimex iCE40HX8K-EVB RISC-V Platform
+# Git Ignore File
+
+#===============================================================================
+# Build Artifacts
+#===============================================================================
+
+# FPGA Build Outputs
+build/
+*.json
+*.asc
+*.bin
+*.rpt
+*.log
+timing_report.txt
+pnr.log
+
+# Firmware Build Outputs
+firmware/*.elf
+firmware/*.o
+firmware/*.obj
+firmware/*.map
+firmware/*.lst
+firmware/*.dump
+firmware/*.dis
+
+# Keep example firmware hex files for reference
+# firmware/*.hex
+
+# Uploader Build Outputs
+tools/uploader/fw_upload
+tools/uploader/fw_upload.exe
+tools/uploader/*.o
+tools/uploader/*.obj
+
+#===============================================================================
+# Simulation Files (ModelSim/Questa)
+#===============================================================================
+
+# ModelSim Work Library
+sim/work/
+*/work/
+
+# ModelSim/Questa Logs and Outputs
+*.wlf
+*.vstf
+*.wlft
+transcript
+vsim.dbg
+vsim_stacktrace.vstf
+
+# Simulation Dumps
+*.vcd
+*.fst
+*.ghw
+
+#===============================================================================
+# Editor and IDE Files
+#===============================================================================
+
+# Vim
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Eclipse
+.project
+.cproject
+.settings/
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+#===============================================================================
+# Operating System Files
+#===============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.directory
+.Trash-*
+
+#===============================================================================
+# Temporary Files
+#===============================================================================
+
+# General Temp Files
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+
+# Core Dumps
+core
+core.*
+
+#===============================================================================
+# Version Control
+#===============================================================================
+
+# Git
+*.orig
+*.rej
+
+#===============================================================================
+# Toolchain-Specific
+#===============================================================================
+
+# Yosys
+*.ilang
+
+# NextPNR
+*.place
+*.route
+
+# GCC
+*.d
+*.a
+*.so
+*.dylib
+*.dll
+
+#===============================================================================
+# Project-Specific
+#===============================================================================
+
+# Old cleanroom references (should not exist, but just in case)
+*cleanroom*
+
+# Temporary test files
+test_*
+temp_*
+
+# User-specific configuration
+.user_settings
+local_config.*
