@@ -22,6 +22,11 @@ module mem_controller (
     input wire [ 3:0] cpu_mem_wstrb,
     output reg [31:0] cpu_mem_rdata,
 
+    // Bootloader ROM Interface (read-only)
+    output reg        boot_enable,
+    output reg [12:0] boot_addr,
+    input wire [31:0] boot_rdata,
+
     // SRAM Interface (via sram_proc_new)
     output reg        sram_start,
     input wire        sram_busy,
@@ -45,6 +50,8 @@ module mem_controller (
     // Memory Map
     localparam SRAM_BASE = 32'h00000000;
     localparam SRAM_END  = 32'h0007FFFF;  // 512 KB
+    localparam BOOT_BASE = 32'h00010000;  // Bootloader ROM
+    localparam BOOT_END  = 32'h00011FFF;  // 8 KB
     localparam MMIO_BASE = 32'h80000000;
     localparam MMIO_END  = 32'h800000FF;
 
@@ -53,10 +60,11 @@ module mem_controller (
     localparam CMD_WRITE = 8'h02;
 
     // State Machine
-    localparam STATE_IDLE = 3'h0;
+    localparam STATE_IDLE      = 3'h0;
     localparam STATE_SRAM_WAIT = 3'h1;
     localparam STATE_MMIO_WAIT = 3'h2;
-    localparam STATE_DONE = 3'h3;
+    localparam STATE_BOOT_WAIT = 3'h3;
+    localparam STATE_DONE      = 3'h4;
 
     reg [2:0] state;
     reg [31:0] saved_addr;
@@ -64,6 +72,7 @@ module mem_controller (
 
     // Address Decode
     wire addr_is_sram = (cpu_mem_addr >= SRAM_BASE) && (cpu_mem_addr <= SRAM_END);
+    wire addr_is_boot = (cpu_mem_addr >= BOOT_BASE) && (cpu_mem_addr <= BOOT_END);
     wire addr_is_mmio = (cpu_mem_addr >= MMIO_BASE) && (cpu_mem_addr <= MMIO_END);
 
     always @(posedge clk) begin
@@ -71,6 +80,8 @@ module mem_controller (
             state <= STATE_IDLE;
             cpu_mem_ready <= 1'b0;
             cpu_mem_rdata <= 32'h0;
+            boot_enable <= 1'b0;
+            boot_addr <= 13'h0;
             sram_start <= 1'b0;
             sram_cmd <= 8'h0;
             sram_addr <= 32'h0;
@@ -86,6 +97,7 @@ module mem_controller (
         end else begin
             // Default: clear control signals
             cpu_mem_ready <= 1'b0;
+            boot_enable <= 1'b0;
             sram_start <= 1'b0;
             mmio_valid <= 1'b0;
 
@@ -95,7 +107,17 @@ module mem_controller (
                         saved_addr <= cpu_mem_addr;
                         saved_is_write <= |cpu_mem_wstrb;
 
-                        if (addr_is_sram) begin
+                        if (addr_is_boot && !(|cpu_mem_wstrb)) begin
+                            // Route to Bootloader ROM (read-only)
+                            boot_enable <= 1'b1;
+                            boot_addr <= cpu_mem_addr[12:0];  // 8KB address space
+                            state <= STATE_BOOT_WAIT;
+
+                            // synthesis translate_off
+                            $display("[MEM_CTRL] BOOT ROM read: addr=0x%08x", cpu_mem_addr);
+                            // synthesis translate_on
+
+                        end else if (addr_is_sram) begin
                             // Route to SRAM
                             sram_cmd <= |cpu_mem_wstrb ? CMD_WRITE : CMD_READ;
                             sram_addr <= cpu_mem_addr;
@@ -135,6 +157,17 @@ module mem_controller (
                             // synthesis translate_on
                         end
                     end
+                end
+
+                STATE_BOOT_WAIT: begin
+                    // Bootloader ROM has 1-cycle latency
+                    cpu_mem_rdata <= boot_rdata;
+                    cpu_mem_ready <= 1'b1;
+                    state <= STATE_IDLE;
+
+                    // synthesis translate_off
+                    $display("[MEM_CTRL] BOOT ROM read complete: data=0x%08x", boot_rdata);
+                    // synthesis translate_on
                 end
 
                 STATE_SRAM_WAIT: begin
