@@ -32,12 +32,12 @@ module ice40_picorv32_top (
 );
 
     // Clock and reset management
-    // Divide 100 MHz crystal by 4 to get 25 MHz system clock (meets timing at 46.96 MHz max)
-    reg [1:0] clk_div = 0;
+    // Divide 100 MHz crystal by 2 to get 50 MHz system clock (meets timing at 67.84 MHz max)
+    reg clk_div = 0;
     always @(posedge EXTCLK) begin
-        clk_div <= clk_div + 1;
+        clk_div <= ~clk_div;
     end
-    wire clk = clk_div[1];
+    wire clk = clk_div;
 
     reg [7:0] reset_counter = 0;
     wire global_resetn = &reset_counter;
@@ -89,9 +89,9 @@ module ice40_picorv32_top (
     wire [7:0] uart_tx_data_mux = mmio_uart_tx_data;
     wire uart_tx_valid_mux = mmio_uart_tx_valid;
 
-    // UART Core (25 MHz clock after divide-by-4)
+    // UART Core (50 MHz clock after divide-by-2)
     uart #(
-        .CLK_FREQ(25_000_000),
+        .CLK_FREQ(50_000_000),
         .BAUD_RATE(115_200),
         .OS_RATE(16),
         .D_WIDTH(8),
