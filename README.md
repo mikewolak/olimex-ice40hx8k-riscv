@@ -407,10 +407,42 @@ Benefits:
 
 ### Timing Analysis
 
-- **Target frequency**: 25 MHz (40 ns period)
-- **Achieved frequency**: 67.84 MHz (14.74 ns period)
-- **Timing margin**: +170% (2.7× margin)
-- **Critical path**: 14.74 ns (CPU ALU carry chain)
+- **Target frequency**: 50 MHz (20 ns period)
+- **Achieved frequency**: 66.92 MHz (14.94 ns period)
+- **Timing margin**: +33.8% (5.06 ns slack)
+- **Critical path**: 14.94 ns (CPU ALU carry chain)
+
+### Memory Performance
+
+**SRAM Access Cycles** (at 50 MHz, 20 ns/cycle):
+
+| Operation | Cycles | Time | Details |
+|-----------|--------|------|---------|
+| 16-bit SRAM read | 5 | 100 ns | Physical driver cycle (IDLE→SETUP→ACTIVE→RECOVERY→COOLDOWN) |
+| 16-bit SRAM write | 5 | 100 ns | Physical driver cycle |
+| 32-bit READ | 15 | 300 ns | Two 16-bit reads + 5 cycles overhead |
+| 32-bit WRITE (word) | 14 | 280 ns | Two 16-bit writes + 4 cycles overhead |
+| 32-bit WRITE (byte) | 29 | 580 ns | Read-modify-write: read(15) + merge(1) + write(14) |
+
+**State Machine Flow (per 16-bit access):**
+```
+Cycle 0: IDLE     - Valid arrives, latch address/data
+Cycle 1: SETUP    - Address setup, CS asserted
+Cycle 2: ACTIVE   - WE pulse (write) / data sample (read)
+Cycle 3: RECOVERY - Transaction complete, ready asserted
+Cycle 4: COOLDOWN - Mandatory 1-cycle gap before next access
+Cycle 5: Return to IDLE
+```
+
+**Performance Notes:**
+- Current implementation: **Conservative timing** with extra wait states
+- SRAM datasheet (K6R4016V1D-TC10): 10ns access time at 3.3V
+- **Optimization planned**: Reduce to ~7-8 cycles per 32-bit access once remaining drivers are added
+- COOLDOWN state prevents back-to-back access timing violations
+
+**Module Details:**
+- `sram_driver_new.v` - Physical SRAM interface (5 cycles per 16-bit access)
+- `sram_proc_new.v` - 32-bit to 16-bit converter with RMW support
 
 ### Bootloader Size
 
