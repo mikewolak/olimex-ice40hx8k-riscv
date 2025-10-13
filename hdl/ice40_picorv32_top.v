@@ -233,7 +233,7 @@ module ice40_picorv32_top (
         .pcpi_wait(1'b0),
         .pcpi_ready(1'b0),
 
-        .irq(32'h0),
+        .irq({31'h0, timer_irq}),  // IRQ[0] = Timer interrupt
         .eoi()
     );
 
@@ -337,8 +337,10 @@ module ice40_picorv32_top (
         .sram_rdata_16(sram_rdata_16)
     );
 
-    // MMIO Peripherals - UART, LED, and Button registers
-    // No mode controller anymore - always in "app mode"
+    // Timer interrupt signal
+    wire timer_irq;
+
+    // MMIO Peripherals - UART, LED, Button, and Timer registers
     mmio_peripherals mmio (
         .clk(clk),
         .resetn(cpu_resetn),
@@ -373,7 +375,10 @@ module ice40_picorv32_top (
         // Mode Controller Interface (tied off - no mode switching)
         .mode_write(),  // Unconnected - writes ignored
         .mode_wdata(),  // Unconnected
-        .mode_rdata(32'h00000001)  // Always returns 1 (app mode)
+        .mode_rdata(32'h00000001),  // Always returns 1 (app mode)
+
+        // Timer Interrupt Output
+        .timer_irq(timer_irq)
     );
 
 endmodule

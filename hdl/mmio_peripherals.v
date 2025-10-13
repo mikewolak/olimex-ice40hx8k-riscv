@@ -43,7 +43,10 @@ module mmio_peripherals (
     // Mode Controller Interface
     output reg        mode_write,
     output reg [31:0] mode_wdata,
-    input wire [31:0] mode_rdata
+    input wire [31:0] mode_rdata,
+
+    // Interrupt Output
+    output wire timer_irq
 );
 
     // Memory Map
@@ -54,9 +57,34 @@ module mmio_peripherals (
     localparam ADDR_LED_CONTROL    = 32'h80000010;
     localparam ADDR_MODE_CONTROL   = 32'h80000014;  // Bit 0: 0=Shell, 1=App
     localparam ADDR_BUTTON_INPUT   = 32'h80000018;  // Bit 0: BUT1, Bit 1: BUT2 (1=pressed)
+    localparam ADDR_TIMER_BASE     = 32'h80000020;  // Timer registers (0x20-0x2F)
 
     // LED Control Register
     reg [1:0] led_reg;
+
+    // Timer interface signals
+    wire        timer_valid;
+    wire        timer_ready;
+    wire [31:0] timer_rdata;
+
+    // Address decode for timer (0x80000020-0x8000002F)
+    wire addr_is_timer = (mmio_addr[31:4] == 28'h8000002);
+
+    // Timer Peripheral Instance
+    timer_peripheral timer (
+        .clk(clk),
+        .resetn(resetn),
+        .mmio_valid(timer_valid),
+        .mmio_write(mmio_write),
+        .mmio_addr(mmio_addr),
+        .mmio_wdata(mmio_wdata),
+        .mmio_wstrb(mmio_wstrb),
+        .mmio_rdata(timer_rdata),
+        .mmio_ready(timer_ready),
+        .timer_irq(timer_irq)
+    );
+
+    assign timer_valid = mmio_valid && addr_is_timer;
 
     always @(posedge clk) begin
         if (!resetn) begin
@@ -82,7 +110,11 @@ module mmio_peripherals (
             led2 <= led_reg[1];
 
             if (mmio_valid && !mmio_ready) begin
-                if (mmio_write) begin
+                // Route timer addresses to timer peripheral
+                if (addr_is_timer) begin
+                    mmio_rdata <= timer_rdata;
+                    mmio_ready <= timer_ready;
+                end else if (mmio_write) begin
                     // ============ WRITE OPERATIONS ============
                     case (mmio_addr)
                         ADDR_UART_TX_DATA: begin

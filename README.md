@@ -42,13 +42,18 @@ The bootloader enables **field updates** without reprogramming the FPGA bitstrea
 - **PicoRV32 CPU**: Full RV32IM (32-register) RISC-V processor @ 50 MHz
   - Hardware multiply/divide instructions
   - Barrel shifter for single-cycle shifts
-  - Interrupt support (IRQ + timer)
+  - Interrupt support (IRQ)
+- **Timer Peripheral**: STM32-style 32-bit down-counter (work in progress)
+  - Configurable prescaler for clock division
+  - Auto-reload register for period control
+  - Interrupt generation on counter expiry
+  - Memory-mapped control registers
 - **Bootloader ROM**: 8KB BRAM initialized from `bootloader.hex` at synthesis
 - **Firmware Upload**: UART-based protocol with CRC32 verification (PKZIP/IEEE 802.3)
 - **Memory Controller**: Unified interface for SRAM, BRAM, and MMIO
 - **512KB External SRAM**: K6R4016V1D-TC10 for application code and data
 - **MMIO Peripherals**: UART, LEDs, buttons via memory-mapped registers
-- **Efficient Design**: 85% logic utilization, 50% BRAM, capable of 67MHz
+- **Efficient Design**: 61% logic utilization, 50% BRAM, capable of 60MHz
 
 ---
 
@@ -401,19 +406,21 @@ Benefits:
 
 ### iCE40HX8K-CT256 FPGA
 
-| Resource             | Used  | Total | Utilization | Notes                    |
-|----------------------|-------|-------|-------------|--------------------------|
-| Logic Cells (LCs)    | 3,551 | 7,680 | **46%**     | PicoRV32 + peripherals   |
-| Block RAM (BRAM)     | 16    | 32    | **50%**     | Bootloader ROM (8KB)     |
-| I/O Pins             | 44    | 256   | 17%         | SRAM + UART + LEDs       |
-| Global Buffers       | 8     | 8     | 100%        | Clock distribution       |
+| Resource             | Used  | Total | Utilization | Notes                              |
+|----------------------|-------|-------|-------------|------------------------------------|
+| Logic Cells (LCs)    | 4,678 | 7,680 | **61%**     | RV32IM CPU + timer + peripherals   |
+| Block RAM (BRAM)     | 16    | 32    | **50%**     | Bootloader ROM (8KB)               |
+| I/O Pins             | 44    | 256   | 17%         | SRAM + UART + LEDs                 |
+| Global Buffers       | 8     | 8     | 100%        | Clock distribution                 |
+
+**Note**: Upgrade from RV32E (16 registers) to RV32IM (32 registers + MUL/DIV + barrel shifter + interrupts + timer) increased LC usage from 3,551 (46%) to 4,678 (61%).
 
 ### Timing Analysis
 
 - **Target frequency**: 50 MHz (20 ns period)
-- **Achieved frequency**: 66.92 MHz (14.94 ns period)
-- **Timing margin**: +33.8% (5.06 ns slack)
-- **Critical path**: 14.94 ns (CPU ALU carry chain)
+- **Achieved frequency**: 59.58 MHz (16.78 ns period)
+- **Timing margin**: +19% (3.22 ns slack)
+- **Critical path**: 16.78 ns (CPU divide unit → compare logic)
 
 ### Memory Performance
 

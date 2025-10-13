@@ -20,6 +20,7 @@ HDL_SOURCES = $(HDL_DIR)/picorv32.v \
               $(HDL_DIR)/bootloader_rom.v \
               $(HDL_DIR)/mem_controller.v \
               $(HDL_DIR)/mmio_peripherals.v \
+              $(HDL_DIR)/timer_peripheral.v \
               $(HDL_DIR)/ice40_picorv32_top.v
 
 PCF_FILE = $(HDL_DIR)/ice40_picorv32.pcf
