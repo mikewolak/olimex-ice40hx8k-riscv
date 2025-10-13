@@ -23,7 +23,7 @@ SOURCES = $(TARGET).c
 ASM_SOURCES = start.S
 
 # All firmware targets
-FIRMWARE_TARGETS = led_blink interactive button_demo
+FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock
 
 # Compiler flags for RV32I (32 registers with MUL/DIV/barrel shifter)
 ARCH = rv32im
