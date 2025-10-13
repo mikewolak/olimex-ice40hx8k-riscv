@@ -21,9 +21,9 @@ SIZE = $(PREFIX)size
 SOURCES = bootloader.c
 ASM_SOURCES = start.S
 
-# Compiler flags for RV32E (16 registers, no MUL/DIV)
-ARCH = rv32e
-ABI = ilp32e
+# Compiler flags for RV32I (32 registers with MUL/DIV/barrel shifter)
+ARCH = rv32im
+ABI = ilp32
 CFLAGS = -march=$(ARCH) -mabi=$(ABI) -O2 -g
 CFLAGS += -nostartfiles -nostdlib -nodefaultlibs
 CFLAGS += -Wall -Wextra

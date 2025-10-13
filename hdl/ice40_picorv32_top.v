@@ -176,34 +176,34 @@ module ice40_picorv32_top (
     wire [ 3:0] cpu_mem_wstrb;
     wire [31:0] cpu_mem_rdata;
 
-    // PicoRV32 CPU Core - RV32E (16 regs) to save space
+    // PicoRV32 CPU Core - RV32I (32 regs) with MUL/DIV, barrel shifter, and interrupts
     // Boots from bootloader at 0x40000, which then jumps to firmware at 0x0
     picorv32 #(
         .ENABLE_COUNTERS(0),
         .ENABLE_COUNTERS64(0),
-        .ENABLE_REGS_16_31(0),          // RV32E: only 16 registers
+        .ENABLE_REGS_16_31(1),          // RV32I: full 32 registers (x0-x31)
         .ENABLE_REGS_DUALPORT(0),
         .LATCHED_MEM_RDATA(0),
-        .TWO_STAGE_SHIFT(1),
-        .BARREL_SHIFTER(0),
+        .TWO_STAGE_SHIFT(0),            // Disable slow shifter when using barrel shifter
+        .BARREL_SHIFTER(1),             // Fast single-cycle shifts
         .TWO_CYCLE_COMPARE(0),
         .TWO_CYCLE_ALU(0),
         .COMPRESSED_ISA(0),
         .CATCH_MISALIGN(0),
         .CATCH_ILLINSN(0),
         .ENABLE_PCPI(0),
-        .ENABLE_MUL(0),
+        .ENABLE_MUL(1),                 // Enable multiply instructions
         .ENABLE_FAST_MUL(0),
-        .ENABLE_DIV(0),
-        .ENABLE_IRQ(0),
-        .ENABLE_IRQ_QREGS(0),
-        .ENABLE_IRQ_TIMER(0),
+        .ENABLE_DIV(1),                 // Enable divide instructions
+        .ENABLE_IRQ(1),                 // Enable interrupt support
+        .ENABLE_IRQ_QREGS(1),           // Enable IRQ shadow registers (q0-q3)
+        .ENABLE_IRQ_TIMER(1),           // Enable IRQ timer register
         .ENABLE_TRACE(0),
         .REGS_INIT_ZERO(1),
         .MASKED_IRQ(32'h00000000),
         .LATCHED_IRQ(32'hffffffff),
         .PROGADDR_RESET(32'h00040000),  // Start from bootloader ROM
-        .PROGADDR_IRQ(32'h00000010),
+        .PROGADDR_IRQ(32'h00000010),    // IRQ handler at 0x10
         .STACKADDR(32'h00080000)
     ) cpu (
         .clk(clk),

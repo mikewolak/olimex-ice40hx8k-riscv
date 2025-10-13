@@ -25,9 +25,9 @@ ASM_SOURCES = start.S
 # All firmware targets
 FIRMWARE_TARGETS = led_blink interactive button_demo
 
-# Compiler flags for RV32E (16 registers, no MUL/DIV)
-ARCH = rv32e
-ABI = ilp32e
+# Compiler flags for RV32I (32 registers with MUL/DIV/barrel shifter)
+ARCH = rv32im
+ABI = ilp32
 CFLAGS = -march=$(ARCH) -mabi=$(ABI) -O2 -g
 CFLAGS += -nostartfiles -nostdlib -nodefaultlibs
 CFLAGS += -Wall -Wextra
