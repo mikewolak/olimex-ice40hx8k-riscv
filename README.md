@@ -43,17 +43,194 @@ The bootloader enables **field updates** without reprogramming the FPGA bitstrea
   - Hardware multiply/divide instructions
   - Barrel shifter for single-cycle shifts
   - Interrupt support (IRQ)
-- **Timer Peripheral**: STM32-style 32-bit down-counter (work in progress)
-  - Configurable prescaler for clock division
-  - Auto-reload register for period control
-  - Interrupt generation on counter expiry
-  - Memory-mapped control registers
+- **Timer Peripheral**: STM32-style 32-bit down-counter ✅ Validated on hardware
+  - Configurable prescaler for clock division (PSC register)
+  - Auto-reload register for period control (ARR register)
+  - Interrupt generation on counter expiry (10kHz rate tested)
+  - Memory-mapped control registers (CR, SR, PSC, ARR)
 - **Bootloader ROM**: 8KB BRAM initialized from `bootloader.hex` at synthesis
 - **Firmware Upload**: UART-based protocol with CRC32 verification (PKZIP/IEEE 802.3)
 - **Memory Controller**: Unified interface for SRAM, BRAM, and MMIO
 - **512KB External SRAM**: K6R4016V1D-TC10 for application code and data
 - **MMIO Peripherals**: UART, LEDs, buttons via memory-mapped registers
 - **Efficient Design**: 61% logic utilization, 50% BRAM, capable of 60MHz
+
+---
+
+## Interrupt Handling
+
+### Overview
+
+This platform implements **hardware interrupt support** using PicoRV32's LATCHED_IRQ mode. The system includes:
+- Timer peripheral generating periodic interrupts
+- Assembly IRQ wrapper preserving CPU state
+- Custom instructions for interrupt control
+- Validated on FPGA hardware and in simulation
+
+### IRQ Wrapper (firmware/start.S)
+
+**Location**: `firmware/start.S:49-77`
+
+The IRQ wrapper is a critical piece of assembly code that preserves CPU state when an interrupt fires. It **must save ALL caller-saved registers** to prevent register corruption.
+
+**Assembly Implementation:**
+
+```asm
+.global irq_vec
+.align 4
+irq_vec:
+    /* CRITICAL: Save ALL caller-saved registers (a0-a7, t0-t6, ra) */
+    /* Interrupts can occur at any point - compiler may be using any register! */
+    addi sp, sp, -64
+    sw ra,  0(sp)
+    sw a0,  4(sp)
+    sw a1,  8(sp)
+    sw a2, 12(sp)
+    sw a3, 16(sp)   // CRITICAL: Don't skip any registers!
+    sw a4, 20(sp)
+    sw a5, 24(sp)
+    sw a6, 28(sp)
+    sw a7, 32(sp)
+    sw t0, 36(sp)
+    sw t1, 40(sp)
+    sw t2, 44(sp)
+    sw t3, 48(sp)
+    sw t4, 52(sp)
+    sw t5, 56(sp)
+    sw t6, 60(sp)
+
+    /* Call C interrupt handler */
+    call irq_handler
+
+    /* Restore ALL registers */
+    lw ra,  0(sp)
+    lw a0,  4(sp)
+    lw a1,  8(sp)
+    lw a2, 12(sp)
+    lw a3, 16(sp)
+    lw a4, 20(sp)
+    lw a5, 24(sp)
+    lw a6, 28(sp)
+    lw a7, 32(sp)
+    lw t0, 36(sp)
+    lw t1, 40(sp)
+    lw t2, 44(sp)
+    lw t3, 48(sp)
+    lw t4, 52(sp)
+    lw t5, 56(sp)
+    lw t6, 60(sp)
+    addi sp, sp, 64
+
+    /* Return from interrupt - re-enables IRQs */
+    retirq
+```
+
+**Why This Matters:**
+
+RISC-V has two classes of registers:
+- **Caller-saved** (a0-a7, t0-t6, ra): Must be saved by interrupt handler
+- **Callee-saved** (s0-s11): Preserved by called functions, not needed in IRQ wrapper
+
+**The compiler can use any caller-saved register** during program execution. If the IRQ wrapper doesn't save them all, interrupts will corrupt register values and cause crashes.
+
+**Bug Example**: Early implementation only saved 7 registers (ra, a0-a2, t0-t2). When the compiler used register `a3` for a loop variable, interrupts corrupted it, causing firmware to exit prematurely.
+
+**Stack Frame**: 64 bytes (17 registers × 4 bytes, aligned)
+
+### Custom PicoRV32 Instructions
+
+PicoRV32 implements custom instructions for interrupt control using the RISC-V "custom-0" opcode space.
+
+#### 1. Enable Interrupts (q0/q1/q2/q3)
+
+**Instruction**: `.insn r 0x0B, 6, 3, %0, x0, x0`
+
+**Usage in C:**
+```c
+static inline void irq_enable(void) {
+    uint32_t dummy;
+    __asm__ volatile (".insn r 0x0B, 6, 3, %0, x0, x0" : "=r"(dummy));
+}
+```
+
+**What it does:**
+- Sets internal CPU flag to enable interrupt processing
+- Must be called during firmware initialization
+- Interrupts remain masked until this is called
+
+**Details:**
+- Opcode: `0x0B` (custom-0)
+- Function codes: funct3=6, funct7=3
+- This maps to PicoRV32's `q0` (getq/setq) instruction
+- Result written to destination register (can be ignored)
+
+#### 2. Return from Interrupt (retirq)
+
+**Instruction**: `0x0400000b` (custom encoding)
+
+**Usage in Assembly:**
+```asm
+retirq   # Automatically restores PC and re-enables interrupts
+```
+
+**What it does:**
+- Restores program counter (PC) to pre-interrupt value
+- Re-enables interrupts (single instruction, atomic)
+- Must be the last instruction in IRQ wrapper
+
+**Details:**
+- Custom instruction recognized by PicoRV32 core
+- Equivalent to: restore PC + enable IRQ flag
+- In LATCHED_IRQ mode, IRQ line must be cleared before `retirq` or interrupt will immediately fire again
+
+**Assembly Macro** (defined in `start.S`):
+```asm
+.macro retirq
+    .word 0x0400000b
+.endm
+```
+
+### Typical Interrupt Flow
+
+```
+1. Hardware asserts IRQ line (e.g., timer expires)
+   └─→ CPU latches interrupt request
+
+2. CPU finishes current instruction
+   └─→ PC saved internally
+
+3. CPU jumps to irq_vec (defined in start.S)
+   └─→ IRQ wrapper saves all caller-saved registers to stack
+
+4. IRQ wrapper calls C function irq_handler()
+   └─→ Handler clears interrupt source (e.g., TIMER_SR = 1)
+   └─→ Handler updates state (e.g., interrupt_count++)
+
+5. C function returns to IRQ wrapper
+   └─→ IRQ wrapper restores all registers from stack
+
+6. IRQ wrapper executes 'retirq' instruction
+   └─→ PC restored, interrupts re-enabled
+   └─→ Execution continues from interrupted point
+```
+
+### Hardware Requirements
+
+For interrupts to work, firmware must:
+
+1. **Enable interrupts globally**: Call `irq_enable()` during init
+2. **Configure peripheral**: Set timer PSC, ARR, enable bit
+3. **Clear interrupt flags**: Write to peripheral status register in handler
+4. **Use proper IRQ wrapper**: Save/restore all caller-saved registers
+
+### Testing and Validation
+
+See documentation for detailed test results:
+- `docs/INTERRUPT_BUG_FIX.md` - Root cause analysis of register corruption bug
+- `docs/FPGA_TEST_INSTRUCTIONS.md` - Hardware testing guide
+- `sim/README_TIMER_TEST.md` - Simulation test instructions
+
+**Status**: ✅ Timer interrupts validated at 100μs period (10kHz) on FPGA hardware
 
 ---
 
