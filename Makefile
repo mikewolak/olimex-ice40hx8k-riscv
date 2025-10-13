@@ -17,10 +17,9 @@ HDL_SOURCES = $(HDL_DIR)/picorv32.v \
               $(HDL_DIR)/sram_driver_new.v \
               $(HDL_DIR)/sram_proc_new.v \
               $(HDL_DIR)/firmware_loader.v \
-              $(HDL_DIR)/shell.v \
+              $(HDL_DIR)/bootloader_rom.v \
               $(HDL_DIR)/mem_controller.v \
               $(HDL_DIR)/mmio_peripherals.v \
-              $(HDL_DIR)/mode_controller.v \
               $(HDL_DIR)/ice40_picorv32_top.v
 
 PCF_FILE = $(HDL_DIR)/ice40_picorv32.pcf
@@ -53,6 +52,10 @@ PNR_OPTS = --placer heap --seed 1
 #       on Unix systems, requiring Windows and WinIceprog.exe for bitstream upload.
 ICEPROG = WinIceprog.exe -I COM5
 
+# Bootloader Build
+BOOTLOADER_DIR = bootloader
+BOOTLOADER_HEX = $(BOOTLOADER_DIR)/bootloader.hex
+
 # Firmware Build
 FIRMWARE_DIR = firmware
 UPLOADER_DIR = tools/uploader
@@ -66,17 +69,19 @@ MODELSIM = vsim
 # ============================================================================
 
 .PHONY: all synth pnr pnr-sa pnr-sa-seeds pnr-seeds bitstream time clean help
+.PHONY: bootloader bootloader-clean
 .PHONY: firmware firmware-interactive firmware-button-demo firmware-led-blink firmware-clean
 .PHONY: uploader uploader-linux uploader-clean
 .PHONY: sim sim-interactive sim-crc sim-cpu sim-r
 .PHONY: prog
 
 # Default target
-all: bitstream firmware uploader
+all: bootloader bitstream firmware uploader
 	@echo ""
 	@echo "========================================="
 	@echo "Build Complete!"
 	@echo "========================================="
+	@echo "Bootloader:  $(BOOTLOADER_HEX)"
 	@echo "Bitstream:   $(BIN_FILE)"
 	@echo "Firmware:    $(FIRMWARE_DIR)/led_blink.hex"
 	@echo "             $(FIRMWARE_DIR)/interactive.hex"
@@ -89,16 +94,32 @@ all: bitstream firmware uploader
 	@echo ""
 
 # ============================================================================
+# Bootloader Build Targets
+# ============================================================================
+
+bootloader: $(BOOTLOADER_HEX)
+
+$(BOOTLOADER_HEX):
+	@echo "========================================="
+	@echo "Building Bootloader"
+	@echo "========================================="
+	@$(MAKE) -C $(BOOTLOADER_DIR)
+	@echo "✓ Bootloader built: $(BOOTLOADER_HEX)"
+
+bootloader-clean:
+	@$(MAKE) -C $(BOOTLOADER_DIR) clean
+
+# ============================================================================
 # HDL Synthesis and Place & Route
 # ============================================================================
 
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
 
-# Synthesis: Verilog -> JSON
+# Synthesis: Verilog -> JSON (depends on bootloader.hex for ROM initialization)
 synth: $(BUILD_DIR) $(JSON_FILE)
 
-$(JSON_FILE): $(HDL_SOURCES)
+$(JSON_FILE): $(HDL_SOURCES) $(BOOTLOADER_HEX)
 	@echo "========================================="
 	@echo "Synthesis: Verilog -> JSON"
 	@echo "========================================="
@@ -300,7 +321,7 @@ prog: $(BIN_FILE)
 # Cleanup
 # ============================================================================
 
-clean: firmware-clean uploader-clean
+clean: bootloader-clean firmware-clean uploader-clean
 	@echo "Cleaning build artifacts..."
 	@rm -rf $(BUILD_DIR)
 	@rm -f *.log *.vcd
@@ -317,12 +338,12 @@ distclean: clean
 # ============================================================================
 
 help:
-	@echo "Olimex iCE40HX8K-EVB RISC-V Platform - Build System"
+	@echo "Olimex iCE40HX8K-EVB RISC-V Platform - Build System (Bootloader Edition)"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Main Targets:"
-	@echo "  all              - Build everything (HDL + firmware + uploader)"
+	@echo "  all              - Build everything (bootloader + HDL + firmware + uploader)"
 	@echo "  synth            - Synthesize HDL (Verilog -> JSON)"
 	@echo "  pnr              - Place and route (JSON -> ASC) - heap placer, seed 1"
 	@echo "  pnr-sa           - Place and route with SA placer + ignore-loops"
@@ -331,6 +352,10 @@ help:
 	@echo "  bitstream        - Generate bitstream (ASC -> BIN)"
 	@echo "  time             - Run timing analysis"
 	@echo "  prog             - Program FPGA (Windows only)"
+	@echo ""
+	@echo "Bootloader Targets:"
+	@echo "  bootloader       - Build software bootloader (runs from 0x40000)"
+	@echo "  bootloader-clean - Clean bootloader build"
 	@echo ""
 	@echo "Firmware Targets:"
 	@echo "  firmware                  - Build all firmware (led_blink, interactive, button_demo)"

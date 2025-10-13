@@ -199,6 +199,7 @@ module uart #(
                         tx_state <= TX_TRANSMIT;
                     end else begin
                         tx_state <= TX_IDLE;
+                        tx_busy <= 1'b0;  // Clear busy flag when transmission completes
                         // synthesis translate_off
                         $display("[UART] TX complete, returning to IDLE");
                         // synthesis translate_on

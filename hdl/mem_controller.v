@@ -50,8 +50,8 @@ module mem_controller (
     // Memory Map
     localparam SRAM_BASE = 32'h00000000;
     localparam SRAM_END  = 32'h0007FFFF;  // 512 KB
-    localparam BOOT_BASE = 32'h00010000;  // Bootloader ROM
-    localparam BOOT_END  = 32'h00011FFF;  // 8 KB
+    localparam BOOT_BASE = 32'h00040000;  // Bootloader ROM (after 256KB code)
+    localparam BOOT_END  = 32'h00041FFF;  // 8 KB
     localparam MMIO_BASE = 32'h80000000;
     localparam MMIO_END  = 32'h800000FF;
 
@@ -60,11 +60,12 @@ module mem_controller (
     localparam CMD_WRITE = 8'h02;
 
     // State Machine
-    localparam STATE_IDLE      = 3'h0;
-    localparam STATE_SRAM_WAIT = 3'h1;
-    localparam STATE_MMIO_WAIT = 3'h2;
-    localparam STATE_BOOT_WAIT = 3'h3;
-    localparam STATE_DONE      = 3'h4;
+    localparam STATE_IDLE       = 3'h0;
+    localparam STATE_SRAM_WAIT  = 3'h1;
+    localparam STATE_MMIO_WAIT  = 3'h2;
+    localparam STATE_BOOT_WAIT  = 3'h3;
+    localparam STATE_BOOT_WAIT2 = 3'h4;
+    localparam STATE_DONE       = 3'h5;
 
     reg [2:0] state;
     reg [31:0] saved_addr;
@@ -160,7 +161,12 @@ module mem_controller (
                 end
 
                 STATE_BOOT_WAIT: begin
-                    // Bootloader ROM has 1-cycle latency
+                    // Bootloader ROM has synchronous read: wait 1 cycle for address to be registered
+                    state <= STATE_BOOT_WAIT2;
+                end
+
+                STATE_BOOT_WAIT2: begin
+                    // Bootloader ROM: data is now available after 2-cycle latency
                     cpu_mem_rdata <= boot_rdata;
                     cpu_mem_ready <= 1'b1;
                     state <= STATE_IDLE;

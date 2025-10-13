@@ -10,49 +10,63 @@
  *============================================================================*/
 
 /*
- * Bootloader Memory Map:
- *   0x00010000 - 0x00011FFF : Bootloader ROM (8KB SPRAM/BRAM)
- *   0x00000000 - 0x0007FFFF : Target SRAM (512KB) - where we write firmware
+ * Bootloader Linker Script
+ *
+ * Physical Memory Map (as seen by CPU):
+ *   0x00000000 - 0x0003FFFF : Main firmware SRAM (256KB)
+ *   0x00040000 - 0x00041FFF : Bootloader ROM (8KB, mapped by mem_controller)
+ *   0x00042000 - 0x0007FFFF : Heap/Stack SRAM (~248KB)
  *   0x80000000+            : MMIO peripherals
+ *
+ * Linking Strategy:
+ *   VMA (Virtual/Execution Address) = 0x40000 (where CPU executes from)
+ *   LMA (Load Memory Address)       = 0x00000 (for hex file, ROM module indexing)
+ *
+ *   The bootloader ROM module is 8KB, indexed 0x0000-0x1FFF internally.
+ *   CPU boots at physical 0x40000 (PROGADDR_RESET), which maps to ROM.
+ *   We use AT() to separate execution address from hex file address.
  */
 
 MEMORY
 {
-    /* Bootloader runs from high memory (SPRAM initialized from bitstream) */
-    BOOTROM (rx)  : ORIGIN = 0x00010000, LENGTH = 8K
+    /* Bootloader ROM: VMA at 0x40000 (execution), LMA at 0x0 (hex file) */
+    BOOTROM_EXEC (rx) : ORIGIN = 0x00040000, LENGTH = 8K
+    BOOTROM_LOAD (rx) : ORIGIN = 0x00000000, LENGTH = 8K
 
-    /* Stack grows down from end of bootloader space */
-    STACK (rw)    : ORIGIN = 0x00011F00, LENGTH = 256
+    /* BSS data in SRAM (must start AFTER ROM ends at 0x42000) */
+    BOOTSRAM (rw)     : ORIGIN = 0x00042000, LENGTH = 3K
+
+    /* Stack in SRAM */
+    STACK (rw)        : ORIGIN = 0x00042F00, LENGTH = 256
 }
 
 SECTIONS
 {
-    /* Entry point */
     ENTRY(_start)
 
-    /* Bootloader code section */
-    .text : {
+    /* Code section: Execute at 0x40000, load from 0x0 */
+    .text : AT(ADDR(.text) - 0x40000) {
         *(.text.start)      /* start.S must be first */
         *(.text*)
         *(.rodata*)
         . = ALIGN(4);
-    } > BOOTROM
+    } > BOOTROM_EXEC
 
     /* Read-only data */
-    .rodata : {
+    .rodata : AT(ADDR(.rodata) - 0x40000) {
         *(.rodata*)
         *(.srodata*)
         . = ALIGN(4);
-    } > BOOTROM
+    } > BOOTROM_EXEC
 
-    /* Initialized data (will be in ROM, copied to RAM if needed) */
-    .data : {
+    /* Initialized data */
+    .data : AT(ADDR(.data) - 0x40000) {
         *(.data*)
         *(.sdata*)
         . = ALIGN(4);
-    } > BOOTROM
+    } > BOOTROM_EXEC
 
-    /* BSS section - uninitialized data */
+    /* BSS in SRAM (separate memory region) */
     .bss : {
         __bss_start = .;
         *(.bss*)
@@ -60,11 +74,12 @@ SECTIONS
         *(COMMON)
         . = ALIGN(4);
         __bss_end = .;
-    } > BOOTROM
+    } > BOOTSRAM
 
-    /* Stack pointer (grows downward from top of stack region) */
+    /* Stack pointer */
     __stack_top = ORIGIN(STACK) + LENGTH(STACK);
 
-    /* Verify we didn't overflow */
-    ASSERT(. <= 0x00012000, "ERROR: Bootloader exceeds 8KB!")
+    /* Verify ROM size */
+    __bootrom_size = SIZEOF(.text) + SIZEOF(.rodata) + SIZEOF(.data);
+    ASSERT(__bootrom_size <= 8K, "ERROR: Bootloader exceeds 8KB ROM!")
 }

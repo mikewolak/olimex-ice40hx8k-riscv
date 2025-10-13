@@ -1,67 +1,81 @@
-/*
- * Linker script for PicoRV32 on iCE40-HX8K
- * 512KB SRAM (0x00000000 - 0x0007FFFF)
+/*==============================================================================
+ * Olimex iCE40HX8K-EVB RISC-V Platform - Firmware/Application Linker Script
+ * linker.ld - Memory layout for uploaded applications
  *
- * Memory allocation:
- *   Code/Data/BSS: 80% = 417,792 bytes (0x66000)
- *   Heap:          15% =  77,824 bytes (0x13000)
- *   Stack:          5% =  28,672 bytes (0x07000)
- *   Total:              524,288 bytes (0x80000 = 512KB)
- */
+ * Copyright (c) October 2025 Michael Wolak
+ * Email: mikewolak@gmail.com, mike@epromfoundry.com
+ *
+ * NOT FOR COMMERCIAL USE
+ * Educational and research purposes only
+ *============================================================================*/
 
-OUTPUT_ARCH(riscv)
-ENTRY(_start)
+/*
+ * Application/Firmware Linker Script
+ *
+ * Physical Memory Map:
+ *   0x00000000 - 0x0003FFFF : Application SRAM (256KB)
+ *   0x00040000 - 0x00041FFF : Bootloader ROM (read-only, not for apps)
+ *   0x00042000 - 0x0007FFFF : Heap/Stack SRAM (~248KB)
+ *   0x80000000+            : MMIO peripherals
+ *
+ * Linking Strategy:
+ *   Applications are uploaded by bootloader to SRAM starting at 0x00000000.
+ *   Code executes at absolute address 0x0.
+ *   Simple linking - VMA = LMA = 0x0.
+ */
 
 MEMORY
 {
-    SRAM (rwx) : ORIGIN = 0x00000000, LENGTH = 0x80000  /* 512 KB */
+    /* Application code and data in SRAM */
+    APPSRAM (rwx) : ORIGIN = 0x00000000, LENGTH = 256K
+
+    /* Stack/Heap space (shared with bootloader stack region) */
+    STACK (rw)    : ORIGIN = 0x00042000, LENGTH = 248K
 }
 
 SECTIONS
 {
-    /* Code and read-only data */
+    ENTRY(_start)
+
+    /* Code section at 0x0 */
     .text : {
-        *(.text.start)    /* Entry point */
-        *(.text*)         /* All code */
-        *(.rodata*)       /* Read-only data */
+        *(.text.start)      /* Startup code first */
+        *(.text*)
         . = ALIGN(4);
-    } > SRAM
+    } > APPSRAM
+
+    /* Read-only data */
+    .rodata : {
+        *(.rodata*)
+        *(.srodata*)
+        . = ALIGN(4);
+    } > APPSRAM
 
     /* Initialized data */
     .data : {
-        . = ALIGN(4);
-        __data_start = .;
         *(.data*)
+        *(.sdata*)
         . = ALIGN(4);
-        __data_end = .;
-    } > SRAM
+    } > APPSRAM
 
-    /* Uninitialized data (BSS) */
+    /* Uninitialized data */
     .bss : {
-        . = ALIGN(4);
         __bss_start = .;
         *(.bss*)
+        *(.sbss*)
         *(COMMON)
         . = ALIGN(4);
         __bss_end = .;
-    } > SRAM
+    } > APPSRAM
 
-    /* End of code/data/bss - start of heap */
-    . = ALIGN(4);
-    __code_end = .;
+    /* Heap starts after BSS */
+    __heap_start = ALIGN(., 4);
+    __heap_end = ORIGIN(STACK);
 
-    /* Heap: 77,824 bytes (0x13000) starting after BSS */
-    .heap : {
-        __heap_start = .;
-        . = . + 0x13000;  /* 15% of 512KB */
-        __heap_end = .;
-    } > SRAM
+    /* Stack pointer (grows down from top of stack region) */
+    __stack_top = ORIGIN(STACK) + LENGTH(STACK);
 
-    /* Stack: 28,672 bytes (0x07000) at top of SRAM */
-    /* Stack grows downward from __stack_top */
-    __stack_bottom = 0x00079000;  /* 0x80000 - 0x7000 */
-    __stack_top = 0x00080000;     /* Top of SRAM */
-
-    /* Sanity check: ensure we don't overflow */
-    ASSERT(__heap_end <= __stack_bottom, "Heap overflow into stack region!")
+    /* Verify application fits in SRAM */
+    __app_size = SIZEOF(.text) + SIZEOF(.rodata) + SIZEOF(.data) + SIZEOF(.bss);
+    ASSERT(__app_size <= 256K, "ERROR: Application exceeds 256KB SRAM!")
 }

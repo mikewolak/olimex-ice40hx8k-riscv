@@ -56,9 +56,10 @@ $(BIN): $(ELF)
 	@echo "Bootloader binary size:"
 	@ls -lh $@
 
-# Create hex dump (for SPRAM initialization)
-$(HEX): $(ELF)
-	$(OBJCOPY) -O verilog $< $@
+# Create hex dump (32-bit words, little-endian for Verilog $readmemh)
+$(HEX): $(BIN)
+	@echo "@00000000" > $@
+	@hexdump -v -e '1/4 "%08x\n"' $(BIN) >> $@
 	@echo "Bootloader hex file created: $@"
 
 # Disassembly listing (ALWAYS GENERATED)
@@ -76,8 +77,10 @@ size: $(ELF)
 	$(SIZE) $<
 	@echo ""
 	@echo "Memory layout:"
-	@echo "  Bootloader ROM: 0x00010000 - 0x00011FFF (8KB)"
-	@echo "  Stack:          0x00011F00 - 0x00011FFF (256B)"
+	@echo "  Code space:     0x00000000 - 0x0003FFFF (256KB)"
+	@echo "  Bootloader ROM: 0x00040000 - 0x00041FFF (8KB)"
+	@echo "  Stack:          0x00041F00 - 0x00041FFF (256B)"
+	@echo "  Heap/Stack:     0x00042000 - 0x0007FFFF (~248KB)"
 	@echo ""
 
 # Disassemble (view listing)
