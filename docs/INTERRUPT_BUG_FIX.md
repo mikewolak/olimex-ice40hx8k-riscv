@@ -168,4 +168,4 @@ October 13, 2025
 
 ## Author
 
-Claude Code (debugging) & Michael Wolak (platform)
+Michael Wolak

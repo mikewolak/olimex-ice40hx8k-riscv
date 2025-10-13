@@ -176,6 +176,9 @@ module ice40_picorv32_top (
     wire [ 3:0] cpu_mem_wstrb;
     wire [31:0] cpu_mem_rdata;
 
+    // Timer interrupt signal
+    wire timer_irq;
+
     // PicoRV32 CPU Core - RV32I (32 regs) with MUL/DIV, barrel shifter, and interrupts
     // Boots from bootloader at 0x40000, which then jumps to firmware at 0x0
     picorv32 #(
@@ -202,7 +205,11 @@ module ice40_picorv32_top (
         .REGS_INIT_ZERO(1),
         .MASKED_IRQ(32'h00000000),
         .LATCHED_IRQ(32'hffffffff),
-        .PROGADDR_RESET(32'h00040000),  // Start from bootloader ROM
+`ifdef SIMULATION
+        .PROGADDR_RESET(32'h00000000),  // SIMULATION: Start from SRAM (firmware pre-loaded)
+`else
+        .PROGADDR_RESET(32'h00040000),  // HARDWARE: Start from bootloader ROM
+`endif
         .PROGADDR_IRQ(32'h00000010),    // IRQ handler at 0x10
         .STACKADDR(32'h00080000)
     ) cpu (
@@ -336,9 +343,6 @@ module ice40_picorv32_top (
         .sram_wdata_16(sram_wdata_16_cpu),
         .sram_rdata_16(sram_rdata_16)
     );
-
-    // Timer interrupt signal
-    wire timer_irq;
 
     // MMIO Peripherals - UART, LED, Button, and Timer registers
     mmio_peripherals mmio (

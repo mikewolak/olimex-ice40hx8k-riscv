@@ -115,7 +115,7 @@ module mem_controller (
                             state <= STATE_BOOT_WAIT;
 
                             // synthesis translate_off
-                            $display("[MEM_CTRL] BOOT ROM read: addr=0x%08x", cpu_mem_addr);
+                            // $display("[MEM_CTRL] BOOT ROM read: addr=0x%08x", cpu_mem_addr);
                             // synthesis translate_on
 
                         end else if (addr_is_sram) begin
@@ -128,9 +128,9 @@ module mem_controller (
                             state <= STATE_SRAM_WAIT;
 
                             // synthesis translate_off
-                            $display("[MEM_CTRL] SRAM access: addr=0x%08x %s data=0x%08x wstrb=0x%01x",
-                                     cpu_mem_addr, |cpu_mem_wstrb ? "WRITE" : "READ",
-                                     cpu_mem_wdata, cpu_mem_wstrb);
+                            // $display("[MEM_CTRL] SRAM access: addr=0x%08x %s data=0x%08x wstrb=0x%01x",
+                            //          cpu_mem_addr, |cpu_mem_wstrb ? "WRITE" : "READ",
+                            //          cpu_mem_wdata, cpu_mem_wstrb);
                             // synthesis translate_on
 
                         end else if (addr_is_mmio) begin
@@ -143,9 +143,9 @@ module mem_controller (
                             state <= STATE_MMIO_WAIT;
 
                             // synthesis translate_off
-                            $display("[MEM_CTRL] MMIO access: addr=0x%08x %s data=0x%08x",
-                                     cpu_mem_addr, |cpu_mem_wstrb ? "WRITE" : "READ",
-                                     cpu_mem_wdata);
+                            // $display("[MEM_CTRL] MMIO access: addr=0x%08x %s data=0x%08x",
+                            //          cpu_mem_addr, |cpu_mem_wstrb ? "WRITE" : "READ",
+                            //          cpu_mem_wdata);
                             // synthesis translate_on
 
                         end else begin
@@ -154,7 +154,7 @@ module mem_controller (
                             cpu_mem_ready <= 1'b1;
 
                             // synthesis translate_off
-                            $display("[MEM_CTRL] Invalid address: 0x%08x", cpu_mem_addr);
+                            // $display("[MEM_CTRL] Invalid address: 0x%08x", cpu_mem_addr);
                             // synthesis translate_on
                         end
                     end
@@ -172,7 +172,7 @@ module mem_controller (
                     state <= STATE_IDLE;
 
                     // synthesis translate_off
-                    $display("[MEM_CTRL] BOOT ROM read complete: data=0x%08x", boot_rdata);
+                    // $display("[MEM_CTRL] BOOT ROM read complete: data=0x%08x", boot_rdata);
                     // synthesis translate_on
                 end
 
@@ -184,7 +184,7 @@ module mem_controller (
 
                         // synthesis translate_off
                         if (!saved_is_write) begin
-                            $display("[MEM_CTRL] SRAM read complete: data=0x%08x", sram_rdata);
+                            // $display("[MEM_CTRL] SRAM read complete: data=0x%08x", sram_rdata);
                         end
                         // synthesis translate_on
                     end
@@ -198,7 +198,7 @@ module mem_controller (
 
                         // synthesis translate_off
                         if (!saved_is_write) begin
-                            $display("[MEM_CTRL] MMIO read complete: data=0x%08x", mmio_rdata);
+                            // $display("[MEM_CTRL] MMIO read complete: data=0x%08x", mmio_rdata);
                         end
                         // synthesis translate_on
                     end

@@ -112,6 +112,9 @@ module mmio_peripherals (
             if (mmio_valid && !mmio_ready) begin
                 // Route timer addresses to timer peripheral
                 if (addr_is_timer) begin
+                    // synthesis translate_off
+                    $display("[MMIO_PERIPH] Routing to timer: addr=0x%08x write=%b ready=%b", mmio_addr, mmio_write, timer_ready);
+                    // synthesis translate_on
                     mmio_rdata <= timer_rdata;
                     mmio_ready <= timer_ready;
                 end else if (mmio_write) begin

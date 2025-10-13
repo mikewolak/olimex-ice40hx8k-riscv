@@ -40,8 +40,6 @@ static void uart_puts(const char *s) {
 
 // Main entry point
 int main(void) {
-    uint8_t led_state = 0;
-
     // Send startup message
     uart_puts("PicoRV32 LED Blink Test\r\n");
     uart_puts("LED1 and LED2 alternating\r\n");
