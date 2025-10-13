@@ -39,13 +39,16 @@ The bootloader enables **field updates** without reprogramming the FPGA bitstrea
 
 ## Key Features
 
-- **PicoRV32 CPU**: Compact RV32E (16-register) RISC-V processor @ 25 MHz
+- **PicoRV32 CPU**: Full RV32IM (32-register) RISC-V processor @ 50 MHz
+  - Hardware multiply/divide instructions
+  - Barrel shifter for single-cycle shifts
+  - Interrupt support (IRQ + timer)
 - **Bootloader ROM**: 8KB BRAM initialized from `bootloader.hex` at synthesis
 - **Firmware Upload**: UART-based protocol with CRC32 verification (PKZIP/IEEE 802.3)
 - **Memory Controller**: Unified interface for SRAM, BRAM, and MMIO
 - **512KB External SRAM**: K6R4016V1D-TC10 for application code and data
 - **MMIO Peripherals**: UART, LEDs, buttons via memory-mapped registers
-- **Efficient Design**: 46% logic utilization, 50% BRAM, capable of 67MHz
+- **Efficient Design**: 85% logic utilization, 50% BRAM, capable of 67MHz
 
 ---
 
