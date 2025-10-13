@@ -104,3 +104,15 @@ done_clear_bss:
     /* Infinite loop if main returns */
 loop_forever:
     j loop_forever
+
+//==============================================================================
+// Default (Weak) IRQ Handler
+//
+// This is a weak symbol that can be overridden by user code.
+// If the user doesn't provide their own irq_handler(), this default
+// implementation will be used (does nothing, just returns).
+//==============================================================================
+
+.weak irq_handler
+irq_handler:
+    ret  // Do nothing, just return
