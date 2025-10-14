@@ -36,16 +36,16 @@ static int getch(void) {
     return UART_RX_DATA & 0xFF;
 }
 
-// Enable CPU interrupts
+// Enable CPU interrupts (clear IRQ mask - all interrupts enabled)
 static inline void irq_enable(void) {
     unsigned int dummy;
-    __asm__ volatile (".insn r 0x0B, 6, 3, %0, x0, x0" : "=r"(dummy));
+    __asm__ volatile (".insn r 0x0B, 6, 3, %0, %1, x0" : "=r"(dummy) : "r"(0));
 }
 
-// Disable CPU interrupts
+// Disable CPU interrupts (set IRQ mask to all 1s - all interrupts masked)
 static inline void irq_disable(void) {
     unsigned int dummy;
-    __asm__ volatile (".insn r 0x0B, 6, 2, %0, x0, x0" : "=r"(dummy));
+    __asm__ volatile (".insn r 0x0B, 6, 3, %0, %1, x0" : "=r"(dummy) : "r"(0xFFFFFFFF));
 }
 
 // IRQ handler - called at 1 Hz (every 1 second)
