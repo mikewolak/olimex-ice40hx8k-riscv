@@ -163,3 +163,16 @@ temp_*
 # User-specific configuration
 .user_settings
 local_config.*
+
+#===============================================================================
+# Newlib Build System (auto-fetched and built)
+#===============================================================================
+
+# Newlib source (cloned from git)
+lib/newlib/
+
+# Newlib build directory
+lib/newlib-build/
+
+# Newlib installed libraries (built artifacts)
+system/riscv-newlib/

@@ -61,6 +61,17 @@ BOOTLOADER_HEX = $(BOOTLOADER_DIR)/bootloader.hex
 FIRMWARE_DIR = firmware
 UPLOADER_DIR = tools/uploader
 
+# System Libraries (newlib, etc.)
+SYSTEM_DIR = system
+NEWLIB_SRC_DIR = lib/newlib
+NEWLIB_BUILD_DIR = lib/newlib-build
+NEWLIB_INSTALL_DIR = $(SYSTEM_DIR)/riscv-newlib
+
+# Target architecture for newlib (must match firmware/Makefile)
+RISCV_ARCH = rv32im
+RISCV_ABI = ilp32
+RISCV_TARGET = riscv64-unknown-elf
+
 # Simulation
 SIM_DIR = sim
 MODELSIM = vsim
@@ -75,6 +86,7 @@ MODELSIM = vsim
 .PHONY: uploader uploader-linux uploader-clean
 .PHONY: sim sim-interactive sim-crc sim-cpu sim-r
 .PHONY: prog
+.PHONY: newlib-fetch newlib-configure newlib-build newlib-install newlib-clean newlib-distclean
 
 # Default target
 all: bootloader bitstream firmware uploader
@@ -262,6 +274,109 @@ firmware-clean:
 	@$(MAKE) -C $(FIRMWARE_DIR) clean
 
 # ============================================================================
+# System Libraries - Newlib (C Standard Library for RISC-V)
+# ============================================================================
+
+# Fetch newlib source from git if not present
+newlib-fetch:
+	@echo "========================================="
+	@echo "Checking Newlib Source"
+	@echo "========================================="
+	@mkdir -p lib
+	@mkdir -p $(SYSTEM_DIR)
+	@if [ ! -d "$(NEWLIB_SRC_DIR)" ]; then \
+		echo "Newlib source not found. Cloning from git..."; \
+		echo "Repository: https://sourceware.org/git/newlib-cygwin.git"; \
+		echo "This may take a few minutes..."; \
+		echo ""; \
+		git clone --depth 1 https://sourceware.org/git/newlib-cygwin.git $(NEWLIB_SRC_DIR) || \
+		(echo "ERROR: Failed to clone newlib. Check your internet connection." && exit 1); \
+		echo ""; \
+		echo "✓ Newlib source cloned to $(NEWLIB_SRC_DIR)"; \
+	else \
+		echo "✓ Newlib source found at $(NEWLIB_SRC_DIR)"; \
+	fi
+
+# Configure newlib for rv32im/ilp32 only
+newlib-configure: newlib-fetch
+	@echo "========================================="
+	@echo "Configuring Newlib for $(RISCV_ARCH)/$(RISCV_ABI)"
+	@echo "========================================="
+	@echo "Target:  $(RISCV_TARGET)"
+	@echo "Arch:    $(RISCV_ARCH)"
+	@echo "ABI:     $(RISCV_ABI)"
+	@echo "Install: $(NEWLIB_INSTALL_DIR)"
+	@echo ""
+	@mkdir -p $(NEWLIB_BUILD_DIR)
+	@mkdir -p $(SYSTEM_DIR)
+	@cd $(NEWLIB_BUILD_DIR) && \
+	../newlib/configure \
+		--target=$(RISCV_TARGET) \
+		--prefix=$(PWD)/$(NEWLIB_INSTALL_DIR) \
+		--with-arch=$(RISCV_ARCH) \
+		--with-abi=$(RISCV_ABI) \
+		--enable-newlib-nano-malloc \
+		--enable-newlib-nano-formatted-io \
+		--enable-newlib-reent-small \
+		--disable-newlib-fvwrite-in-streamio \
+		--disable-newlib-fseek-optimization \
+		--disable-newlib-wide-orient \
+		--disable-newlib-unbuf-stream-opt \
+		--disable-newlib-supplied-syscalls \
+		--disable-nls \
+		--disable-multilib \
+		CFLAGS_FOR_TARGET="-march=$(RISCV_ARCH) -mabi=$(RISCV_ABI) -O2 -g" \
+		> build_configure.log 2>&1
+	@echo "✓ Newlib configured for $(RISCV_ARCH)/$(RISCV_ABI) only"
+	@echo "  See $(NEWLIB_BUILD_DIR)/build_configure.log for details"
+
+# Build newlib (single target only - much faster!)
+newlib-build: newlib-configure
+	@echo "========================================="
+	@echo "Building Newlib for $(RISCV_ARCH)/$(RISCV_ABI)"
+	@echo "========================================="
+	@echo "This will build ONLY for $(RISCV_ARCH)/$(RISCV_ABI)"
+	@echo "(not all RISC-V variants - should take ~30 min instead of 12 hours)"
+	@echo ""
+	@cd $(NEWLIB_BUILD_DIR) && \
+		$(MAKE) -j$$(nproc) > build.log 2>&1 || \
+		(tail -50 build.log && exit 1)
+	@echo "✓ Newlib built successfully"
+	@echo "  Build log: $(NEWLIB_BUILD_DIR)/build.log"
+
+# Install newlib to system directory
+newlib-install: newlib-build
+	@echo "========================================="
+	@echo "Installing Newlib to $(NEWLIB_INSTALL_DIR)"
+	@echo "========================================="
+	@cd $(NEWLIB_BUILD_DIR) && \
+		$(MAKE) install > install.log 2>&1
+	@echo "✓ Newlib installed to $(NEWLIB_INSTALL_DIR)"
+	@echo ""
+	@echo "Installed libraries:"
+	@ls -lh $(NEWLIB_INSTALL_DIR)/$(RISCV_TARGET)/lib/$(RISCV_ARCH)/$(RISCV_ABI)/*.a 2>/dev/null || \
+		ls -lh $(NEWLIB_INSTALL_DIR)/$(RISCV_TARGET)/lib/*.a 2>/dev/null || \
+		echo "  (libraries will be in subdirectories)"
+	@echo ""
+	@echo "Update firmware/Makefile to use:"
+	@echo "  CFLAGS += -isystem ../$(NEWLIB_INSTALL_DIR)/$(RISCV_TARGET)/include"
+	@echo "  LDFLAGS += -L../$(NEWLIB_INSTALL_DIR)/$(RISCV_TARGET)/lib"
+	@echo "  LIBS = -lc -lm -lgcc"
+
+# Clean newlib build artifacts (keep configuration)
+newlib-clean:
+	@echo "Cleaning newlib build artifacts..."
+	@cd $(NEWLIB_BUILD_DIR) && $(MAKE) clean 2>/dev/null || true
+	@echo "✓ Newlib build artifacts cleaned"
+
+# Complete clean of newlib (requires reconfigure)
+newlib-distclean:
+	@echo "Removing all newlib build files..."
+	@rm -rf $(NEWLIB_BUILD_DIR)
+	@rm -rf $(NEWLIB_INSTALL_DIR)
+	@echo "✓ Newlib completely removed (requires reconfigure)"
+
+# ============================================================================
 # Firmware Uploader (Host Software)
 # ============================================================================
 
@@ -364,6 +479,17 @@ help:
 	@echo "  firmware-interactive      - Build interactive.hex only"
 	@echo "  firmware-button-demo      - Build button_demo.hex only"
 	@echo "  firmware-clean            - Clean firmware build"
+	@echo ""
+	@echo "Newlib Targets (C Standard Library for rv32im/ilp32):"
+	@echo "  newlib-install            - Auto-fetch, configure, build, install newlib (~30-45 min)"
+	@echo "  newlib-fetch              - Clone newlib source from git (if not present)"
+	@echo "  newlib-configure          - Configure newlib for rv32im/ilp32 ONLY"
+	@echo "  newlib-build              - Build newlib (single target, not multilib)"
+	@echo "  newlib-clean              - Clean build artifacts (keep config)"
+	@echo "  newlib-distclean          - Remove all newlib files (requires rebuild)"
+	@echo ""
+	@echo "Building with Newlib:"
+	@echo "  cd firmware && make TARGET=printf_test USE_NEWLIB=1 single-target"
 	@echo ""
 	@echo "Uploader Targets:"
 	@echo "  uploader         - Build firmware uploader (Linux)"
