@@ -9,7 +9,18 @@
 # Educational and research purposes only
 #===============================================================================
 
-PREFIX = riscv64-unknown-elf-
+# Detect host OS and set appropriate toolchain prefix
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+    # macOS - use homebrew RISC-V toolchain
+    PREFIX = riscv-none-elf-
+    $(info Building bootloader on macOS - using $(PREFIX) toolchain)
+else
+    # Linux/Windows - use standard toolchain
+    PREFIX = riscv64-unknown-elf-
+    $(info Building bootloader on $(UNAME_S) - using $(PREFIX) toolchain)
+endif
+
 CC = $(PREFIX)gcc
 AS = $(PREFIX)as
 LD = $(PREFIX)ld
