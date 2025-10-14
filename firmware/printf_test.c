@@ -135,18 +135,24 @@ static void test_scanf_integers(void) {
     println("");
     println("=== scanf() Integer Input Tests ===");
 
+    // Clear stdin buffer before scanf
+    fflush(stdin);
+
     int decimal;
     printf("Enter a decimal number: ");
+    fflush(stdout);
     scanf("%d", &decimal);
     printf("You entered: %d (0x%X)\r\n", decimal, decimal);
 
     unsigned int hex;
     printf("\r\nEnter a hex number (with 0x prefix): ");
+    fflush(stdout);
     scanf("%x", &hex);
     printf("You entered: 0x%X (%u decimal)\r\n", hex, hex);
 
     int oct;
     printf("\r\nEnter an octal number: ");
+    fflush(stdout);
     scanf("%o", &oct);
     printf("You entered: %o octal (%d decimal)\r\n", oct, oct);
 }
@@ -155,8 +161,12 @@ static void test_scanf_floats(void) {
     println("");
     println("=== scanf() Floating Point Input Tests ===");
 
+    // Clear stdin buffer before scanf
+    fflush(stdin);
+
     float f;
     printf("Enter a float: ");
+    fflush(stdout);
     scanf("%f", &f);
     printf("You entered: %f\r\n", f);
     printf("  Scientific: %e\r\n", f);
@@ -164,6 +174,7 @@ static void test_scanf_floats(void) {
 
     double d;
     printf("\r\nEnter a double: ");
+    fflush(stdout);
     scanf("%lf", &d);
     printf("You entered: %.10f\r\n", d);
 
@@ -181,13 +192,18 @@ static void test_scanf_strings(void) {
     println("");
     println("=== scanf() String Input Tests ===");
 
+    // Clear stdin buffer before scanf
+    fflush(stdin);
+
     char word[80];
     printf("Enter a word (no spaces): ");
+    fflush(stdout);
     scanf("%s", word);
     printf("You entered: '%s' (length=%d)\r\n", word, strlen(word));
 
     char buffer[80];
     printf("\r\nEnter a line with spaces: ");
+    fflush(stdout);
     scanf(" %[^\r\n]", buffer);  // Read until newline
     printf("You entered: '%s'\r\n", buffer);
 }
