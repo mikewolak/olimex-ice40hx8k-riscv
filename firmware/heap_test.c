@@ -27,8 +27,8 @@ extern char __heap_end;
 
 // Throughput measurement globals
 static volatile unsigned int bytes_processed = 0;
-static volatile unsigned int last_bytes_processed = 0;
-static volatile unsigned int throughput_active = 0;
+static volatile unsigned int seconds_elapsed = 0;
+static volatile unsigned int new_second = 0;  // Flag: new second ready to display
 
 // Direct UART getch - no echo, no buffering
 static int getch(void) {
@@ -48,35 +48,12 @@ static inline void irq_disable(void) {
     __asm__ volatile (".insn r 0x0B, 6, 2, %0, x0, x0" : "=r"(dummy));
 }
 
-// IRQ handler - called at 10 Hz (every 100ms)
+// IRQ handler - called at 1 Hz (every 1 second)
+// ABSOLUTE MINIMUM - just clear interrupt and set flag
+// Do NOT do any math, increment, or processing here!
 void irq_handler(void) {
-    // Clear timer interrupt flag
-    TIMER_SR = 0x00000001;
-
-    if (throughput_active) {
-        // Calculate throughput
-        unsigned int bytes_delta = bytes_processed - last_bytes_processed;
-        unsigned int bytes_per_sec = bytes_delta * 10;  // 10 Hz → multiply by 10
-
-        last_bytes_processed = bytes_processed;
-
-        // Auto-select units
-        if (bytes_per_sec >= 1000000) {
-            printf("  Throughput: %u.%02u MB/s (%u bytes processed)\r\n",
-                   bytes_per_sec / 1000000,
-                   (bytes_per_sec % 1000000) / 10000,
-                   bytes_processed);
-        } else if (bytes_per_sec >= 1000) {
-            printf("  Throughput: %u.%02u KB/s (%u bytes processed)\r\n",
-                   bytes_per_sec / 1000,
-                   (bytes_per_sec % 1000) / 10,
-                   bytes_processed);
-        } else {
-            printf("  Throughput: %u bytes/s (%u bytes processed)\r\n",
-                   bytes_per_sec, bytes_processed);
-        }
-        fflush(stdout);
-    }
+    TIMER_SR = 0x00000001;  // Clear timer interrupt flag (required)
+    new_second = 1;          // Signal main loop (single store)
 }
 
 //==============================================================================
@@ -431,6 +408,7 @@ static void test_throughput(void) {
     printf("\r\n");
     printf("=== Memory Throughput Test ===\r\n");
     printf("Real-time throughput measurement with timer interrupts\r\n");
+    printf("Uses 32-bit word copies for maximum performance\r\n");
     printf("Press 's' to start, 'q' to quit\r\n");
     fflush(stdout);
 
@@ -442,14 +420,14 @@ static void test_throughput(void) {
     }
 
     printf("\r\nStarting throughput test...\r\n");
-    printf("Continuous memory copy with real-time throughput display\r\n");
+    printf("Continuous 32-bit memory copy with 1-second samples\r\n");
     printf("Press any key to stop\r\n\r\n");
     fflush(stdout);
 
-    // Allocate test buffers (64KB each)
+    // Allocate test buffers (64KB each, word-aligned)
     const size_t buf_size = 65536;
-    unsigned char *src = malloc(buf_size);
-    unsigned char *dst = malloc(buf_size);
+    unsigned int *src = (unsigned int*)malloc(buf_size);
+    unsigned int *dst = (unsigned int*)malloc(buf_size);
 
     if (!src || !dst) {
         printf("FAIL: malloc failed\r\n");
@@ -458,36 +436,68 @@ static void test_throughput(void) {
         return;
     }
 
-    // Fill source with pattern
-    memset(src, 0xAA, buf_size);
+    // Fill source with pattern (32-bit writes)
+    size_t words = buf_size / sizeof(unsigned int);
+    for (size_t i = 0; i < words; i++) {
+        src[i] = 0xAAAAAAAA;
+    }
 
-    // Setup timer for 10 Hz interrupts (every 100ms)
+    // Setup timer for 1 Hz interrupts (every 1 second)
     // Clock = 50 MHz
     // PSC = 49 → divide by 50 → 1 MHz tick
-    // ARR = 99999 → 100000 ticks → 10 Hz IRQ → 100ms period
+    // ARR = 999999 → 1000000 ticks → 1 Hz IRQ → 1 second period
     TIMER_PSC = 49;
-    TIMER_ARR = 99999;
+    TIMER_ARR = 999999;
 
     // Reset counters
     bytes_processed = 0;
-    last_bytes_processed = 0;
+    seconds_elapsed = 0;
+    new_second = 0;
+    unsigned int last_bytes = 0;
 
     // Enable interrupts and timer
     irq_enable();
-    throughput_active = 1;
     TIMER_CR = 0x00000001;
 
-    // Continuous memory copy until keypress
+    // Continuous 32-bit memory copy until keypress
     while (!(UART_RX_STATUS & 0x01)) {
-        memcpy(dst, src, buf_size);
+        // 32-bit word copy (much faster than byte-by-byte)
+        for (size_t i = 0; i < words; i++) {
+            dst[i] = src[i];
+        }
         bytes_processed += buf_size;
+
+        // Check if a new second has elapsed (set by IRQ handler)
+        if (new_second) {
+            new_second = 0;  // Clear flag
+            seconds_elapsed++;  // Do counter increment here, not in IRQ
+
+            // Calculate bytes in last second
+            unsigned int bytes_this_sec = bytes_processed - last_bytes;
+            last_bytes = bytes_processed;
+
+            // Auto-select units
+            if (bytes_this_sec >= 1000000) {
+                printf("  [%2us] Throughput: %u.%02u MB/s (%u MB total)\r\n",
+                       seconds_elapsed,
+                       bytes_this_sec / 1000000,
+                       (bytes_this_sec % 1000000) / 10000,
+                       bytes_processed / (1024 * 1024));
+            } else if (bytes_this_sec >= 1000) {
+                printf("  [%2us] Throughput: %u.%02u KB/s (%u KB total)\r\n",
+                       seconds_elapsed,
+                       bytes_this_sec / 1000,
+                       (bytes_this_sec % 1000) / 10,
+                       bytes_processed / 1024);
+            } else {
+                printf("  [%2us] Throughput: %u bytes/s (%u bytes total)\r\n",
+                       seconds_elapsed,
+                       bytes_this_sec,
+                       bytes_processed);
+            }
+            fflush(stdout);
+        }
     }
-
-    // Stop throughput display first (prevent IRQ handler from printf)
-    throughput_active = 0;
-
-    // Small delay to let any pending IRQ complete
-    for (volatile int i = 0; i < 10000; i++);
 
     // Disable timer (no more interrupts)
     TIMER_CR = 0x00000000;
@@ -508,8 +518,18 @@ static void test_throughput(void) {
 
     printf("\r\n");
     printf("Test stopped.\r\n");
-    printf("Total bytes processed: %u (%u KB)\r\n",
-           bytes_processed, bytes_processed / 1024);
+    printf("Total time: %u seconds\r\n", seconds_elapsed);
+    printf("Total bytes: %u (%u MB, %u KB)\r\n",
+           bytes_processed,
+           bytes_processed / (1024 * 1024),
+           (bytes_processed / 1024) % 1024);
+
+    if (seconds_elapsed > 0) {
+        unsigned int avg_throughput = bytes_processed / seconds_elapsed;
+        printf("Average throughput: %u.%02u MB/s\r\n",
+               avg_throughput / 1000000,
+               (avg_throughput % 1000000) / 10000);
+    }
 
     free(src);
     free(dst);
