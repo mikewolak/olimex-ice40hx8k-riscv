@@ -10,6 +10,10 @@
 #include <string.h>
 #include <math.h>
 
+// UART direct access for menu (no echo, no buffering)
+#define UART_RX_DATA   (*(volatile unsigned int*)0x80000008)
+#define UART_RX_STATUS (*(volatile unsigned int*)0x8000000C)
+
 // Custom print functions for comparison
 extern int _write(int file, char *ptr, int len);
 
@@ -22,6 +26,13 @@ static int custom_strlen(const char *s) {
 static void println(const char *s) {
     _write(1, (char*)s, custom_strlen(s));
     _write(1, "\r\n", 2);
+}
+
+// Direct UART getch - no echo, no buffering (for menu input)
+static int getch(void) {
+    // Wait for RX data available (bit is 1 when data available)
+    while (!(UART_RX_STATUS & 0x01));
+    return UART_RX_DATA & 0xFF;
 }
 
 //==============================================================================
@@ -237,8 +248,8 @@ int main(void) {
     println("");
     println("Press any key to start...");
 
-    // Wait for keypress
-    getchar();
+    // Wait for keypress (no echo)
+    getch();
 
     println("");
     println("Terminal connected!");
@@ -248,14 +259,9 @@ int main(void) {
 
     show_menu();
 
-    // Main loop
+    // Main loop - use getch() for unbuffered, non-echoed menu input
     while (1) {
-        int choice = getchar();
-
-        // Skip only newline/carriage return (from echoed input)
-        if (choice == '\n' || choice == '\r') {
-            continue;
-        }
+        int choice = getch();
 
         println("");
 
