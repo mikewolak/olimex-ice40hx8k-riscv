@@ -267,6 +267,277 @@ See documentation for detailed test results:
 
 ---
 
+## Peripheral Drivers
+
+### LED Controller
+
+**Base Address**: `0x80000010`
+
+**Register**: LED_CONTROL (R/W, 32-bit)
+
+| Bit | Name | Access | Description |
+|-----|------|--------|-------------|
+| 0 | LED1 | R/W | LED1 control (1 = ON, 0 = OFF) |
+| 1 | LED2 | R/W | LED2 control (1 = ON, 0 = OFF) |
+| 31:2 | - | - | Reserved (read as 0) |
+
+**Usage Example:**
+```c
+#define LED_CONTROL (*(volatile uint32_t*)0x80000010)
+
+// Turn on LED1, turn off LED2
+LED_CONTROL = 0x00000001;
+
+// Toggle LED1
+LED_CONTROL ^= 0x00000001;
+
+// Turn on both LEDs
+LED_CONTROL = 0x00000003;
+```
+
+---
+
+### Button Controller
+
+**Base Address**: `0x80000014`
+
+**Register**: BUTTON_STATUS (R, 32-bit)
+
+| Bit | Name | Access | Description |
+|-----|------|--------|-------------|
+| 0 | BUT1 | R | Button 1 status (0 = pressed, 1 = released) |
+| 1 | BUT2 | R | Button 2 status (0 = pressed, 1 = released) |
+| 31:2 | - | - | Reserved (read as 0) |
+
+**Usage Example:**
+```c
+#define BUTTON_STATUS (*(volatile uint32_t*)0x80000014)
+
+// Poll for button press (active-low)
+while (BUTTON_STATUS & 0x01); // Wait for BUT1 press
+while (!(BUTTON_STATUS & 0x01)); // Wait for BUT1 release
+
+// Check button state
+if ((BUTTON_STATUS & 0x01) == 0) {
+    // Button 1 is pressed
+}
+```
+
+---
+
+### UART Controller
+
+**Base Address**: `0x80000000`
+
+**Registers:**
+
+| Offset | Register | Access | Description |
+|--------|----------|--------|-------------|
+| +0x00 | UART_TX_DATA | W | Transmit data register (8-bit) |
+| +0x04 | UART_TX_STATUS | R | Transmit status (bit 0 = busy) |
+| +0x08 | UART_RX_DATA | R | Receive data register (8-bit) |
+| +0x0C | UART_RX_STATUS | R | Receive status (bit 0 = empty) |
+
+**Configuration:**
+- **Baud rate**: 115200 (fixed)
+- **Data bits**: 8
+- **Parity**: None
+- **Stop bits**: 1
+- **RX buffer**: 256-byte circular buffer (hardware FIFO)
+
+**Usage Example:**
+```c
+#define UART_TX_DATA   (*(volatile uint32_t*)0x80000000)
+#define UART_TX_STATUS (*(volatile uint32_t*)0x80000004)
+#define UART_RX_DATA   (*(volatile uint32_t*)0x80000008)
+#define UART_RX_STATUS (*(volatile uint32_t*)0x8000000C)
+
+// Send character
+void uart_putc(char c) {
+    while (UART_TX_STATUS & 0x01); // Wait for TX ready
+    UART_TX_DATA = c;
+}
+
+// Receive character (blocking)
+char uart_getc(void) {
+    while (UART_RX_STATUS & 0x01); // Wait for data
+    return UART_RX_DATA & 0xFF;
+}
+
+// Check for available data
+int uart_available(void) {
+    return !(UART_RX_STATUS & 0x01);
+}
+```
+
+---
+
+### Timer Peripheral (STM32-style)
+
+**Base Address**: `0x80000020`
+
+**Registers:**
+
+| Offset | Register | Access | Description |
+|--------|----------|--------|-------------|
+| +0x00 | TIMER_CR | R/W | Control register |
+| +0x04 | TIMER_SR | R/W | Status register |
+| +0x08 | TIMER_PSC | R/W | Prescaler register (16-bit) |
+| +0x0C | TIMER_ARR | R/W | Auto-reload register (32-bit) |
+
+#### TIMER_CR (Control Register)
+
+| Bit | Name | Access | Description |
+|-----|------|--------|-------------|
+| 0 | CEN | R/W | Counter enable (1 = enabled, 0 = disabled) |
+| 31:1 | - | - | Reserved (read as 0) |
+
+#### TIMER_SR (Status Register)
+
+| Bit | Name | Access | Description |
+|-----|------|--------|-------------|
+| 0 | UIF | R/W | Update interrupt flag (1 = overflow occurred) |
+| 31:1 | - | - | Reserved (read as 0) |
+
+**Note**: Write 1 to UIF to clear the interrupt flag.
+
+#### TIMER_PSC (Prescaler Register)
+
+| Bits | Name | Access | Description |
+|------|------|--------|-------------|
+| 15:0 | PSC | R/W | Prescaler value (0-65535) |
+| 31:16 | - | - | Reserved (read as 0) |
+
+**Clock Division**: `f_counter = f_clk / (PSC + 1)`
+
+#### TIMER_ARR (Auto-Reload Register)
+
+| Bits | Name | Access | Description |
+|------|------|--------|-------------|
+| 31:0 | ARR | R/W | Auto-reload value (32-bit down-counter) |
+
+**Counter Behavior**: Counts down from ARR to 0, then generates interrupt and reloads ARR.
+
+---
+
+### Timer Configuration Equations
+
+**System Parameters:**
+- System clock: `f_clk = 50 MHz`
+- Timer resolution: 32-bit counter
+- Prescaler resolution: 16-bit (0-65535)
+
+**Fundamental Equation:**
+
+```
+IRQ_frequency = f_clk / ((PSC + 1) × (ARR + 1))
+```
+
+Or equivalently:
+
+```
+IRQ_period = ((PSC + 1) × (ARR + 1)) / f_clk
+```
+
+**Simplified for 50 MHz clock:**
+
+```
+IRQ_frequency [Hz] = 50,000,000 / ((PSC + 1) × (ARR + 1))
+```
+
+**Design Process:**
+
+1. **Determine desired interrupt frequency** (f_irq)
+2. **Calculate total divisor**: `N_total = f_clk / f_irq`
+3. **Factor N_total into PSC and ARR**:
+   - If `N_total ≤ 2^32`: Set `PSC = 0`, `ARR = N_total - 1`
+   - If `N_total > 2^32`: Choose `PSC` to bring counter range to 32-bit
+
+**Configuration Examples:**
+
+| Target Frequency | PSC | ARR | Calculation | Actual Frequency |
+|------------------|-----|-----|-------------|------------------|
+| **10 kHz** (100 μs) | 0 | 4999 | 50MHz / (1 × 5000) | 10.000 kHz ✅ |
+| **1 kHz** (1 ms) | 0 | 49999 | 50MHz / (1 × 50000) | 1.000 kHz ✅ |
+| **100 Hz** (10 ms) | 0 | 499999 | 50MHz / (1 × 500000) | 100.000 Hz ✅ |
+| **10 Hz** (100 ms) | 0 | 4999999 | 50MHz / (1 × 5000000) | 10.000 Hz ✅ |
+| **1 Hz** (1 second) | 9 | 4999999 | 50MHz / (10 × 5000000) | 1.000 Hz ✅ |
+
+**Code Example (10 kHz timer interrupt):**
+
+```c
+#define TIMER_CR  (*(volatile uint32_t*)0x80000020)
+#define TIMER_SR  (*(volatile uint32_t*)0x80000024)
+#define TIMER_PSC (*(volatile uint32_t*)0x80000028)
+#define TIMER_ARR (*(volatile uint32_t*)0x8000002C)
+
+void timer_init_10khz(void) {
+    // Disable timer during configuration
+    TIMER_CR = 0;
+
+    // Clear any pending interrupt
+    TIMER_SR = 1;
+
+    // Configure for 10 kHz (100 μs period)
+    // f_irq = 50 MHz / ((0 + 1) × (4999 + 1)) = 10 kHz
+    TIMER_PSC = 0;        // No prescaler division
+    TIMER_ARR = 4999;     // 5000 cycles per interrupt
+
+    // Enable interrupts globally
+    irq_enable();
+
+    // Start timer
+    TIMER_CR = 1;
+}
+
+void irq_handler(void) {
+    // Check if timer interrupt
+    if (TIMER_SR & 0x01) {
+        // Clear interrupt flag (MUST do this!)
+        TIMER_SR = 1;
+
+        // Your interrupt code here
+        // (executes every 100 μs)
+    }
+}
+```
+
+**Advanced: Calculating PSC and ARR for any frequency:**
+
+```c
+void timer_set_frequency(uint32_t freq_hz) {
+    uint64_t n_total = 50000000ULL / freq_hz;
+
+    uint32_t psc, arr;
+
+    if (n_total <= 0xFFFFFFFFULL) {
+        // Fits in 32-bit counter without prescaler
+        psc = 0;
+        arr = (uint32_t)n_total - 1;
+    } else {
+        // Need prescaler - find optimal factorization
+        // Start with sqrt(n_total) as first guess
+        psc = (uint32_t)sqrt((double)n_total) - 1;
+
+        // Adjust to fit arr in 32-bit
+        while (psc < 65535) {
+            arr = (uint32_t)(n_total / (psc + 1)) - 1;
+            if (arr <= 0xFFFFFFFF) break;
+            psc++;
+        }
+    }
+
+    TIMER_CR = 0;      // Disable
+    TIMER_PSC = psc;
+    TIMER_ARR = arr;
+    TIMER_CR = 1;      // Re-enable
+}
+```
+
+**Hardware Validation:** ✅ Tested at 10 kHz (100 μs period) on FPGA
+
+---
+
 ## Boot Sequence
 
 ### FPGA Power-On Flow
@@ -605,34 +876,36 @@ Benefits:
 
 ### Memory Performance
 
-**SRAM Access Cycles** (at 50 MHz, 20 ns/cycle):
+**SRAM Access Cycles** (at 50 MHz, 20 ns/cycle) - **✅ OPTIMIZED 2-CYCLE DRIVER**:
 
 | Operation | Cycles | Time | Details |
 |-----------|--------|------|---------|
-| 16-bit SRAM read | 5 | 100 ns | Physical driver cycle (IDLE→SETUP→ACTIVE→RECOVERY→COOLDOWN) |
-| 16-bit SRAM write | 5 | 100 ns | Physical driver cycle |
-| 32-bit READ | 15 | 300 ns | Two 16-bit reads + 5 cycles overhead |
-| 32-bit WRITE (word) | 14 | 280 ns | Two 16-bit writes + 4 cycles overhead |
-| 32-bit WRITE (byte) | 29 | 580 ns | Read-modify-write: read(15) + merge(1) + write(14) |
+| 16-bit SRAM read | 2 | 40 ns | Optimized driver cycle (IDLE→ACTIVE→COMPLETE) |
+| 16-bit SRAM write | 2 | 40 ns | Optimized driver cycle |
+| 32-bit READ | ~6 | 120 ns | Two 16-bit reads + controller overhead |
+| 32-bit WRITE (word) | ~5 | 100 ns | Two 16-bit writes + controller overhead |
+| 32-bit WRITE (byte) | ~11 | 220 ns | Read-modify-write: read(6) + merge(1) + write(5) |
 
 **State Machine Flow (per 16-bit access):**
 ```
 Cycle 0: IDLE     - Valid arrives, latch address/data
-Cycle 1: SETUP    - Address setup, CS asserted
-Cycle 2: ACTIVE   - WE pulse (write) / data sample (read)
-Cycle 3: RECOVERY - Transaction complete, ready asserted
-Cycle 4: COOLDOWN - Mandatory 1-cycle gap before next access
-Cycle 5: Return to IDLE
+Cycle 1: ACTIVE   - CS/WE/OE + address asserted, data becomes valid (reads)
+Cycle 2: COMPLETE - Sample data (read) / WE rising edge (write), assert ready
 ```
 
-**Performance Notes:**
-- Current implementation: **Conservative timing** with extra wait states
-- SRAM datasheet (K6R4016V1D-TC10): 10ns access time at 3.3V
-- **Optimization planned**: Reduce to ~7-8 cycles per 32-bit access once remaining drivers are added
-- COOLDOWN state prevents back-to-back access timing violations
+**Performance Gains (vs. original 5-cycle driver):**
+- **2.5× faster** memory access (100ns → 40ns per 16-bit operation)
+- **40 MB/s peak bandwidth** (up from 14 MB/s)
+- **Hardware validated** on Olimex iCE40HX8K-EVB ✅
+- See `docs/SRAM_CYCLE_TIMING_COMPARISON.md` for detailed analysis
+
+**Datasheet Compliance:**
+- K6R4016V1D-TC10: 10ns access time at 3.3V
+- All timing specifications met with **2-4× safety margins**
+- No COOLDOWN state needed (datasheet allows back-to-back access)
 
 **Module Details:**
-- `sram_driver_new.v` - Physical SRAM interface (5 cycles per 16-bit access)
+- `sram_driver_new.v` - Physical SRAM interface (2 cycles per 16-bit access)
 - `sram_proc_new.v` - 32-bit to 16-bit converter with RMW support
 
 ### Bootloader Size
