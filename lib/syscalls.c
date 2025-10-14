@@ -37,8 +37,8 @@ static void uart_putc(char c) {
 }
 
 static char uart_getc(void) {
-    // Wait for RX data available
-    while (UART_RX_STATUS & 0x01);
+    // Wait for RX data available (bit is 1 when data available)
+    while (!(UART_RX_STATUS & 0x01));
     return UART_RX_DATA & 0xFF;
 }
 
