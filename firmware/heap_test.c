@@ -404,11 +404,148 @@ static void test_stress_allocations(void) {
     printf("%s\r\n", failures == 0 ? "PASS" : "FAIL");
 }
 
+// Helper function to run a throughput test pattern
+static void run_pattern_test(const char *pattern_name,
+                              void *src, void *dst, size_t buf_size,
+                              int is_read_test, int access_width) {
+    printf("\r\n--- %s: %s (10 seconds) ---\r\n",
+           is_read_test ? "READ" : "WRITE", pattern_name);
+    fflush(stdout);
+
+    bytes_processed = 0;
+    seconds_elapsed = 0;
+    new_second = 0;
+    unsigned int last_bytes = 0;
+
+    // Enable timer
+    TIMER_CR = 0x00000001;
+
+    // Run test for 10 seconds or until keypress
+    volatile unsigned int dummy = 0;
+    int exit_requested = 0;
+
+    while (seconds_elapsed < 10 && !exit_requested) {
+        if (is_read_test) {
+            // READ test - read from memory
+            if (access_width == 1) {
+                unsigned char *ptr = (unsigned char*)src;
+                for (size_t i = 0; i < buf_size; i++) {
+                    dummy += ptr[i];
+                    if ((i & 0x3FF) == 0 && (UART_RX_STATUS & 0x01)) {
+                        exit_requested = 1;
+                        break;
+                    }
+                }
+            } else if (access_width == 2) {
+                unsigned short *ptr = (unsigned short*)src;
+                size_t halfwords = buf_size / 2;
+                for (size_t i = 0; i < halfwords; i++) {
+                    dummy += ptr[i];
+                    if ((i & 0x3FF) == 0 && (UART_RX_STATUS & 0x01)) {
+                        exit_requested = 1;
+                        break;
+                    }
+                }
+            } else if (access_width == 4) {
+                unsigned int *ptr = (unsigned int*)src;
+                size_t words = buf_size / 4;
+                for (size_t i = 0; i < words; i++) {
+                    dummy += ptr[i];
+                    if ((i & 0x3FF) == 0 && (UART_RX_STATUS & 0x01)) {
+                        exit_requested = 1;
+                        break;
+                    }
+                }
+            } else {
+                // memcpy (copy operation)
+                memcpy(dst, src, buf_size);
+            }
+        } else {
+            // WRITE test - write to memory
+            if (access_width == 1) {
+                unsigned char *ptr = (unsigned char*)dst;
+                for (size_t i = 0; i < buf_size; i++) {
+                    ptr[i] = 0xAA;
+                    if ((i & 0x3FF) == 0 && (UART_RX_STATUS & 0x01)) {
+                        exit_requested = 1;
+                        break;
+                    }
+                }
+            } else if (access_width == 2) {
+                unsigned short *ptr = (unsigned short*)dst;
+                size_t halfwords = buf_size / 2;
+                for (size_t i = 0; i < halfwords; i++) {
+                    ptr[i] = 0xAAAA;
+                    if ((i & 0x3FF) == 0 && (UART_RX_STATUS & 0x01)) {
+                        exit_requested = 1;
+                        break;
+                    }
+                }
+            } else if (access_width == 4) {
+                unsigned int *ptr = (unsigned int*)dst;
+                size_t words = buf_size / 4;
+                for (size_t i = 0; i < words; i++) {
+                    ptr[i] = 0xAAAAAAAA;
+                    if ((i & 0x3FF) == 0 && (UART_RX_STATUS & 0x01)) {
+                        exit_requested = 1;
+                        break;
+                    }
+                }
+            } else {
+                // memcpy (copy operation)
+                memcpy(dst, src, buf_size);
+            }
+        }
+
+        bytes_processed += buf_size;
+
+        // Check for new second
+        if (new_second) {
+            new_second = 0;
+            seconds_elapsed++;
+
+            unsigned int bytes_this_sec = bytes_processed - last_bytes;
+            last_bytes = bytes_processed;
+
+            if (bytes_this_sec >= 1000000) {
+                printf("  [%2us] %u.%02u MB/s\r\n",
+                       seconds_elapsed,
+                       bytes_this_sec / 1000000,
+                       (bytes_this_sec % 1000000) / 10000);
+            } else {
+                printf("  [%2us] %u.%02u KB/s\r\n",
+                       seconds_elapsed,
+                       bytes_this_sec / 1000,
+                       (bytes_this_sec % 1000) / 10);
+            }
+            fflush(stdout);
+        }
+    }
+
+    // Stop timer
+    TIMER_CR = 0x00000000;
+
+    // Calculate average
+    if (seconds_elapsed > 0) {
+        unsigned int avg = bytes_processed / seconds_elapsed;
+        printf("  Average: %u.%02u MB/s\r\n",
+               avg / 1000000,
+               (avg % 1000000) / 10000);
+    }
+
+    // Drain UART
+    while (UART_RX_STATUS & 0x01) {
+        (void)(UART_RX_DATA);
+    }
+
+    (void)dummy;  // Prevent optimization
+}
+
 static void test_throughput(void) {
     printf("\r\n");
     printf("=== Memory Throughput Test ===\r\n");
-    printf("Real-time throughput measurement with timer interrupts\r\n");
-    printf("Uses 32-bit word copies for maximum performance\r\n");
+    printf("Tests READ and WRITE with different access widths\r\n");
+    printf("Each pattern runs for 10 seconds\r\n");
     printf("Press 's' to start, 'q' to quit\r\n");
     fflush(stdout);
 
@@ -419,15 +556,14 @@ static void test_throughput(void) {
         if (ch == 'q' || ch == 'Q') return;
     }
 
-    printf("\r\nStarting throughput test...\r\n");
-    printf("Continuous 32-bit memory copy with 1-second samples\r\n");
-    printf("Press any key to stop\r\n\r\n");
+    printf("\r\nStarting throughput benchmark...\r\n");
+    printf("Press any key to skip current test\r\n");
     fflush(stdout);
 
-    // Allocate test buffers (64KB each, word-aligned)
+    // Allocate test buffers (64KB each)
     const size_t buf_size = 65536;
-    unsigned int *src = (unsigned int*)malloc(buf_size);
-    unsigned int *dst = (unsigned int*)malloc(buf_size);
+    void *src = malloc(buf_size);
+    void *dst = malloc(buf_size);
 
     if (!src || !dst) {
         printf("FAIL: malloc failed\r\n");
@@ -436,100 +572,37 @@ static void test_throughput(void) {
         return;
     }
 
-    // Fill source with pattern (32-bit writes)
-    size_t words = buf_size / sizeof(unsigned int);
-    for (size_t i = 0; i < words; i++) {
-        src[i] = 0xAAAAAAAA;
-    }
+    // Fill source with pattern
+    memset(src, 0xAA, buf_size);
 
-    // Setup timer for 1 Hz interrupts (every 1 second)
-    // Clock = 50 MHz
-    // PSC = 49 → divide by 50 → 1 MHz tick
-    // ARR = 999999 → 1000000 ticks → 1 Hz IRQ → 1 second period
+    // Setup timer for 1 Hz interrupts
     TIMER_PSC = 49;
     TIMER_ARR = 999999;
 
-    // Reset counters
-    bytes_processed = 0;
-    seconds_elapsed = 0;
-    new_second = 0;
-    unsigned int last_bytes = 0;
-
-    // Enable interrupts and timer
+    // Enable interrupts
     irq_enable();
-    TIMER_CR = 0x00000001;
 
-    // Continuous 32-bit memory copy until keypress
-    while (!(UART_RX_STATUS & 0x01)) {
-        // 32-bit word copy (much faster than byte-by-byte)
-        for (size_t i = 0; i < words; i++) {
-            dst[i] = src[i];
-        }
-        bytes_processed += buf_size;
+    // Run all test patterns
+    printf("\r\n========== READ TESTS ==========\r\n");
+    run_pattern_test("memcpy (copy)", src, dst, buf_size, 1, 0);
+    run_pattern_test("8-bit reads", src, dst, buf_size, 1, 1);
+    run_pattern_test("16-bit reads", src, dst, buf_size, 1, 2);
+    run_pattern_test("32-bit reads", src, dst, buf_size, 1, 4);
 
-        // Check if a new second has elapsed (set by IRQ handler)
-        if (new_second) {
-            new_second = 0;  // Clear flag
-            seconds_elapsed++;  // Do counter increment here, not in IRQ
+    printf("\r\n========== WRITE TESTS ==========\r\n");
+    run_pattern_test("memcpy (copy)", src, dst, buf_size, 0, 0);
+    run_pattern_test("8-bit writes", src, dst, buf_size, 0, 1);
+    run_pattern_test("16-bit writes", src, dst, buf_size, 0, 2);
+    run_pattern_test("32-bit writes", src, dst, buf_size, 0, 4);
 
-            // Calculate bytes in last second
-            unsigned int bytes_this_sec = bytes_processed - last_bytes;
-            last_bytes = bytes_processed;
-
-            // Auto-select units
-            if (bytes_this_sec >= 1000000) {
-                printf("  [%2us] Throughput: %u.%02u MB/s (%u MB total)\r\n",
-                       seconds_elapsed,
-                       bytes_this_sec / 1000000,
-                       (bytes_this_sec % 1000000) / 10000,
-                       bytes_processed / (1024 * 1024));
-            } else if (bytes_this_sec >= 1000) {
-                printf("  [%2us] Throughput: %u.%02u KB/s (%u KB total)\r\n",
-                       seconds_elapsed,
-                       bytes_this_sec / 1000,
-                       (bytes_this_sec % 1000) / 10,
-                       bytes_processed / 1024);
-            } else {
-                printf("  [%2us] Throughput: %u bytes/s (%u bytes total)\r\n",
-                       seconds_elapsed,
-                       bytes_this_sec,
-                       bytes_processed);
-            }
-            fflush(stdout);
-        }
-    }
-
-    // Disable timer (no more interrupts)
+    // Clean shutdown
     TIMER_CR = 0x00000000;
-
-    // Clear any pending timer interrupt
     TIMER_SR = 0x00000001;
-
-    // Disable CPU interrupts
     irq_disable();
 
-    // Consume the keypress
-    (void)getch();
-
-    // Drain any extra characters from UART buffer
-    while (UART_RX_STATUS & 0x01) {
-        (void)(UART_RX_DATA);
-    }
-
-    printf("\r\n");
-    printf("Test stopped.\r\n");
-    printf("Total time: %u seconds\r\n", seconds_elapsed);
-    printf("Total bytes: %u (%u MB, %u KB)\r\n",
-           bytes_processed,
-           bytes_processed / (1024 * 1024),
-           (bytes_processed / 1024) % 1024);
-
-    if (seconds_elapsed > 0) {
-        unsigned int avg_throughput = bytes_processed / seconds_elapsed;
-        printf("Average throughput: %u.%02u MB/s\r\n",
-               avg_throughput / 1000000,
-               (avg_throughput % 1000000) / 10000);
-    }
+    printf("\r\n========================================\r\n");
+    printf("Throughput benchmark complete!\r\n");
+    printf("========================================\r\n");
 
     free(src);
     free(dst);
