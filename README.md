@@ -876,12 +876,12 @@ Benefits:
 
 ### Memory Performance
 
-**SRAM Access Cycles** (at 50 MHz, 20 ns/cycle) - **✅ OPTIMIZED 2-CYCLE DRIVER**:
+**SRAM Access Cycles** (at 50 MHz, 20 ns/cycle):
 
 | Operation | Cycles | Time | Details |
 |-----------|--------|------|---------|
-| 16-bit SRAM read | 2 | 40 ns | Optimized driver cycle (IDLE→ACTIVE→COMPLETE) |
-| 16-bit SRAM write | 2 | 40 ns | Optimized driver cycle |
+| 16-bit SRAM read | 2 | 40 ns | 2-cycle driver (IDLE→ACTIVE→COMPLETE) |
+| 16-bit SRAM write | 2 | 40 ns | 2-cycle driver |
 | 32-bit READ | ~6 | 120 ns | Two 16-bit reads + controller overhead |
 | 32-bit WRITE (word) | ~5 | 100 ns | Two 16-bit writes + controller overhead |
 | 32-bit WRITE (byte) | ~11 | 220 ns | Read-modify-write: read(6) + merge(1) + write(5) |
@@ -893,11 +893,10 @@ Cycle 1: ACTIVE   - CS/WE/OE + address asserted, data becomes valid (reads)
 Cycle 2: COMPLETE - Sample data (read) / WE rising edge (write), assert ready
 ```
 
-**Performance Gains (vs. original 5-cycle driver):**
-- **2.5× faster** memory access (100ns → 40ns per 16-bit operation)
-- **40 MB/s peak bandwidth** (up from 14 MB/s)
+**SRAM Performance:**
+- **40 MB/s peak bandwidth**
 - **Hardware validated** on Olimex iCE40HX8K-EVB ✅
-- See `docs/SRAM_CYCLE_TIMING_COMPARISON.md` for detailed analysis
+- See `docs/SRAM_CYCLE_TIMING_COMPARISON.md` for detailed timing analysis
 
 **Datasheet Compliance:**
 - K6R4016V1D-TC10: 10ns access time at 3.3V
