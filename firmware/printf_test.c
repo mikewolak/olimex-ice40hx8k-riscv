@@ -252,8 +252,8 @@ int main(void) {
     while (1) {
         int choice = getchar();
 
-        // Skip empty/null characters (spurious reads)
-        if (choice <= 0 || choice == '\n' || choice == '\r') {
+        // Skip only newline/carriage return (from echoed input)
+        if (choice == '\n' || choice == '\r') {
             continue;
         }
 
