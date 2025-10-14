@@ -226,6 +226,12 @@ int main(void) {
     // Main loop
     while (1) {
         char choice = getchar_blocking();
+
+        // Skip empty/null characters (spurious reads)
+        if (choice <= 0 || choice == '\n' || choice == '\r') {
+            continue;
+        }
+
         println("");
 
         switch (choice) {
