@@ -259,7 +259,7 @@ See documentation for detailed test results:
 
 ### Board Pinout (Olimex iCE40HX8K-EVB)
 
-- **Clock**: 100MHz external crystal → divided to 25MHz system clock
+- **Clock**: 100MHz external crystal → divided to 50MHz system clock
 - **UART**: 115200 baud, 8N1 via FTDI FT2232H USB-Serial
 - **SRAM**: 16-bit data bus, 256K × 16-bit (512KB total), K6R4016V1D-TC10
 - **LEDs**: Active-high (1 = ON, 0 = OFF)
@@ -380,7 +380,7 @@ See documentation for detailed test results:
 #### Software Tools
 - **RISC-V GCC**: `riscv64-unknown-elf-gcc` cross-compiler
 - **Make**: Build automation
-- **Python 3**: Firmware uploader script
+- **fw_upload**: C-based firmware uploader
 
 #### Optional
 - **ModelSim**: Simulation (Intel FPGA Edition)
