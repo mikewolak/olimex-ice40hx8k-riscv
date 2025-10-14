@@ -256,6 +256,10 @@ See documentation for detailed test results:
 | `0x8000000C` | UART_RX_STATUS | R      | Bit 0: RX buffer empty           |
 | `0x80000010` | LED_CONTROL    | R/W    | Bit 0: LED1, Bit 1: LED2         |
 | `0x80000014` | BUTTON_STATUS  | R      | Bit 0: BUT1, Bit 1: BUT2 (inverted) |
+| `0x80000020` | TIMER_CR       | R/W    | Timer control register           |
+| `0x80000024` | TIMER_SR       | R/W    | Timer status register            |
+| `0x80000028` | TIMER_PSC      | R/W    | Timer prescaler (16-bit)         |
+| `0x8000002C` | TIMER_ARR      | R/W    | Timer auto-reload (32-bit)       |
 
 ### Board Pinout (Olimex iCE40HX8K-EVB)
 
@@ -688,6 +692,34 @@ firmware/
 ├── timer_clock.hex        # Real-time clock demo
 └── irq_timer_test.hex     # Timer interrupt validation (10kHz IRQ)
 ```
+
+### Building with Newlib (C Standard Library)
+
+The platform supports full C standard library (printf, scanf, malloc, etc.) via newlib:
+
+```bash
+# One-time setup: Build and install newlib (~30-45 minutes)
+make newlib-install
+
+# Build firmware with newlib support
+cd firmware
+make TARGET=printf_test USE_NEWLIB=1 single-target
+```
+
+**Features:**
+- Auto-fetches newlib source from git if not present
+- Builds only for rv32im/ilp32 (not multilib - saves hours!)
+- Static linking for embedded system
+- UART I/O via syscalls (_read/_write for printf/scanf)
+- Interactive test programs included
+
+**Available newlib test programs:**
+- `printf_test.c` - Interactive menu testing printf/scanf/math functions
+- `interactive_test.c` - Syscall and I/O testing
+- `stdio_test.c` - Basic stdio operations
+- `syscall_test.c` - Quick verification
+
+See `NEWLIB_ANALYSIS.md` for complete technical documentation.
 
 ### Programming the FPGA
 
