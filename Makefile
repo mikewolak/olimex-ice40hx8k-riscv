@@ -9,6 +9,18 @@
 # Educational and research purposes only
 #===============================================================================
 
+# Detect host OS and set appropriate toolchain prefix
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+    # macOS - use homebrew RISC-V toolchain
+    RISCV_PREFIX = riscv-none-elf-
+    $(info Building on macOS - using $(RISCV_PREFIX) toolchain)
+else
+    # Linux/Windows - use standard toolchain
+    RISCV_PREFIX = riscv64-unknown-elf-
+    $(info Building on $(UNAME_S) - using $(RISCV_PREFIX) toolchain)
+endif
+
 HDL_DIR = hdl
 HDL_SOURCES = $(HDL_DIR)/picorv32.v \
               $(HDL_DIR)/uart.v \
@@ -70,7 +82,7 @@ NEWLIB_INSTALL_DIR = $(SYSTEM_DIR)/riscv-newlib
 # Target architecture for newlib (must match firmware/Makefile)
 RISCV_ARCH = rv32im
 RISCV_ABI = ilp32
-RISCV_TARGET = riscv64-unknown-elf
+RISCV_TARGET = $(RISCV_PREFIX:%-=%)  # Remove trailing dash from prefix
 
 # Simulation
 SIM_DIR = sim
