@@ -332,15 +332,39 @@ static void test_memory_patterns(void) {
     printf("\r\n");
     printf("=== Memory Pattern Test ===\r\n");
 
-    size_t test_size = 16384;  // 16KB test
-    printf("Allocating %u bytes for pattern tests...\r\n", (unsigned int)test_size);
+    // Calculate available heap space
+    unsigned int heap_start = (unsigned int)&__heap_start;
+    unsigned int heap_end = (unsigned int)&__heap_end;
+    unsigned int heap_total = heap_end - heap_start;
+
+    printf("Total heap space: %u bytes (%u KB)\r\n", heap_total, heap_total / 1024);
+
+    // Try to allocate maximum available heap
+    // Start with 90% of total, reduce if fails
+    size_t test_size = (heap_total * 9) / 10;
+    void *ptr = NULL;
+
+    printf("Attempting to allocate maximum available heap...\r\n");
     fflush(stdout);
 
-    void *ptr = malloc(test_size);
+    while (test_size > 4096 && !ptr) {
+        ptr = malloc(test_size);
+        if (!ptr) {
+            test_size = (test_size * 9) / 10;  // Reduce by 10%
+        }
+    }
+
     if (!ptr) {
-        printf("FAIL: malloc returned NULL\r\n");
+        printf("FAIL: Unable to allocate even 4KB of heap\r\n");
         return;
     }
+
+    printf("Allocated %u bytes (%u KB, %.1f%% of heap)\r\n",
+           (unsigned int)test_size,
+           (unsigned int)(test_size / 1024),
+           (float)test_size * 100.0 / heap_total);
+    printf("Testing entire allocated region with 5 patterns...\r\n");
+    fflush(stdout);
 
     int all_pass = 1;
     all_pass &= test_pattern_walking_ones(ptr, test_size);
@@ -350,6 +374,7 @@ static void test_memory_patterns(void) {
     all_pass &= test_pattern_random(ptr, test_size);
 
     free(ptr);
+    printf("\r\n");
     printf("%s\r\n", all_pass ? "ALL PATTERNS PASS" : "SOME PATTERNS FAILED");
 }
 
