@@ -315,7 +315,7 @@ See documentation for detailed test results:
 ```
 ┌──────────┐                  ┌────────────┐
 │   Host   │                  │ Bootloader │
-│ (Python) │                  │  (RISC-V)  │
+│(fw_upload)│                  │  (RISC-V)  │
 └────┬─────┘                  └─────┬──────┘
      │                              │
      │  Step 1: Handshake           │
