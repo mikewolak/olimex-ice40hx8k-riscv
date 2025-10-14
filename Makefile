@@ -540,3 +540,64 @@ help:
 	@echo "  - Max Frequency: 41.79 MHz (target: 12 MHz)"
 	@echo "  - SRAM Size: 512 KB"
 	@echo "  - Firmware Size: ~2.8 KB"
+
+#===============================================================================
+# Project Template System
+#===============================================================================
+
+.PHONY: new-baremetal new-newlib
+
+# Create new bare-metal project
+new-baremetal:
+	@if [ -z "$(PROJ)" ]; then \
+		echo "ERROR: Please specify project name: make new-baremetal PROJ=<name>"; \
+		exit 1; \
+	fi
+	@echo "========================================="
+	@echo "Creating bare-metal project: $(PROJ)"
+	@echo "========================================="
+	@mkdir -p projects/$(PROJ)
+	@cp templates/baremetal/main.c projects/$(PROJ)/
+	@cp firmware/start.S projects/$(PROJ)/
+	@cp firmware/linker.ld projects/$(PROJ)/
+	@cp lib/peripherals.c projects/$(PROJ)/
+	@cp lib/peripherals.h projects/$(PROJ)/
+	@sed 's/PROJECT_NAME/$(PROJ)/g' templates/baremetal/Makefile.template > projects/$(PROJ)/Makefile
+	@echo "✓ Project created at: projects/$(PROJ)"
+	@echo ""
+	@echo "To build:"
+	@echo "  cd projects/$(PROJ)"
+	@echo "  make"
+	@echo ""
+	@echo "To upload:"
+	@echo "  make upload PORT=/dev/ttyUSB0"
+
+# Create new newlib project
+new-newlib:
+	@if [ -z "$(PROJ)" ]; then \
+		echo "ERROR: Please specify project name: make new-newlib PROJ=<name>"; \
+		exit 1; \
+	fi
+	@if [ ! -d "$(NEWLIB_INSTALL_DIR)" ]; then \
+		echo "ERROR: Newlib not installed!"; \
+		echo "Please run: make newlib-install"; \
+		exit 1; \
+	fi
+	@echo "========================================="
+	@echo "Creating newlib project: $(PROJ)"
+	@echo "========================================="
+	@mkdir -p projects/$(PROJ)
+	@cp templates/newlib/main.c projects/$(PROJ)/
+	@cp firmware/start.S projects/$(PROJ)/
+	@cp firmware/linker.ld projects/$(PROJ)/
+	@cp lib/peripherals.c projects/$(PROJ)/
+	@cp lib/peripherals.h projects/$(PROJ)/
+	@sed 's/PROJECT_NAME/$(PROJ)/g' templates/newlib/Makefile.template > projects/$(PROJ)/Makefile
+	@echo "✓ Project created at: projects/$(PROJ)"
+	@echo ""
+	@echo "To build:"
+	@echo "  cd projects/$(PROJ)"
+	@echo "  make"
+	@echo ""
+	@echo "To upload:"
+	@echo "  make upload PORT=/dev/ttyUSB0"

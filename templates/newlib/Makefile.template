@@ -1,0 +1,111 @@
+#===============================================================================
+# Newlib Project Makefile Template
+#===============================================================================
+
+# Detect host OS and set appropriate toolchain prefix
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+    PREFIX = riscv-none-elf-
+else
+    PREFIX = riscv64-unknown-elf-
+endif
+
+CC = $(PREFIX)gcc
+AS = $(PREFIX)as
+LD = $(PREFIX)ld
+OBJCOPY = $(PREFIX)objcopy
+OBJDUMP = $(PREFIX)objdump
+SIZE = $(PREFIX)size
+
+# Newlib paths
+NEWLIB_INSTALL = ../../system/riscv-newlib
+SYSCALLS_SRC = ../../lib/syscalls.c
+SYSCALLS_OBJ = syscalls.o
+
+# Project files
+TARGET = PROJECT_NAME
+SOURCES = main.c peripherals.c
+ASM_SOURCES = start.S
+
+# Compiler flags for RV32IM
+ARCH = rv32im
+ABI = ilp32
+CFLAGS = -march=$(ARCH) -mabi=$(ABI) -O2 -g
+CFLAGS += -Wall -Wextra
+CFLAGS += -ffreestanding -fno-builtin
+
+# Newlib flags - STATICALLY LINKED for embedded system
+CFLAGS += -nostartfiles
+CFLAGS += -isystem $(NEWLIB_INSTALL)/riscv64-unknown-elf/include
+
+# Linker flags
+LDFLAGS = -T linker.ld -static -nostartfiles
+LDFLAGS += -L$(NEWLIB_INSTALL)/riscv64-unknown-elf/lib
+LDFLAGS += -Wl,--gc-sections
+LDFLAGS += -Wl,-Map=$(TARGET).map
+
+# Libraries (include syscalls bridge)
+LIBS = $(SYSCALLS_OBJ) -lc -lm -lgcc
+
+# Output files
+ELF = $(TARGET).elf
+BIN = $(TARGET).bin
+HEX = $(TARGET).hex
+LST = $(TARGET).lst
+MAP = $(TARGET).map
+
+.PHONY: all clean size disasm upload check-newlib
+
+all: check-newlib $(BIN) $(HEX) $(LST) size
+
+# Check if newlib is installed
+check-newlib:
+	@if [ ! -d "$(NEWLIB_INSTALL)" ]; then \
+		echo "ERROR: Newlib not found!"; \
+		echo "Please run: make newlib-install (from project root)"; \
+		exit 1; \
+	fi
+	@echo "✓ Newlib installation found"
+
+# Compile syscalls
+$(SYSCALLS_OBJ): $(SYSCALLS_SRC)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Link ELF
+$(ELF): $(SOURCES) $(ASM_SOURCES) linker.ld $(SYSCALLS_OBJ)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(ASM_SOURCES) $(SOURCES) $(LIBS) -o $@
+
+# Create binary
+$(BIN): $(ELF)
+	$(OBJCOPY) -O binary $< $@
+	@echo "Binary size:"
+	@ls -lh $@
+
+# Create hex dump
+$(HEX): $(ELF)
+	$(OBJCOPY) -O verilog $< $@
+
+# Disassembly listing
+$(LST): $(ELF)
+	$(OBJDUMP) -D -S $< > $@
+
+# Show memory usage
+size: $(ELF)
+	@echo "===================================="
+	@echo "Memory usage:"
+	@echo "===================================="
+	$(SIZE) $<
+
+# Disassemble
+disasm: $(LST)
+	@cat $(LST)
+
+# Upload firmware (requires uploader)
+upload: $(BIN)
+	@echo "Uploading $(BIN)..."
+	../../tools/uploader/fw_upload -p $(PORT) $(BIN)
+
+# Clean
+clean:
+	@rm -f *.elf *.bin *.hex *.lst *.map *.o
+	@echo "Clean complete"

@@ -700,8 +700,8 @@ int main(void) {
                 test_fragmentation();
                 test_memory_patterns();
                 test_stress_allocations();
+                test_throughput();
                 printf("\r\n");
-                printf("Note: Throughput test skipped (interactive)\r\n");
                 printf("========================================\r\n");
                 printf("All heap tests complete!\r\n");
                 printf("========================================\r\n");

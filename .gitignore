@@ -176,3 +176,10 @@ lib/newlib-build/
 
 # Newlib installed libraries (built artifacts)
 system/riscv-newlib/
+
+#===============================================================================
+# User Projects (auto-generated from templates)
+#===============================================================================
+
+# Project directory created by 'make new-baremetal' and 'make new-newlib'
+projects/
