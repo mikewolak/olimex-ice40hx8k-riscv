@@ -458,13 +458,28 @@ static void test_throughput(void) {
         bytes_processed += buf_size;
     }
 
-    // Stop timer and interrupts
-    TIMER_CR = 0x00000000;
+    // Stop throughput display first (prevent IRQ handler from printf)
     throughput_active = 0;
+
+    // Small delay to let any pending IRQ complete
+    for (volatile int i = 0; i < 10000; i++);
+
+    // Disable timer (no more interrupts)
+    TIMER_CR = 0x00000000;
+
+    // Clear any pending timer interrupt
+    TIMER_SR = 0x00000001;
+
+    // Disable CPU interrupts
     irq_disable();
 
     // Consume the keypress
     (void)getch();
+
+    // Drain any extra characters from UART buffer
+    while (UART_RX_STATUS & 0x01) {
+        (void)(UART_RX_DATA);
+    }
 
     printf("\r\n");
     printf("Test stopped.\r\n");
