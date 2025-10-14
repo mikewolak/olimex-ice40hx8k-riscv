@@ -38,7 +38,7 @@ USE_NEWLIB ?= 0
 
 # All firmware targets
 FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock
-NEWLIB_TARGETS = printf_test uart_echo_test
+NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test
 
 # Compiler flags for RV32IM
 ARCH = rv32im
