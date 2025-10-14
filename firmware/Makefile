@@ -76,10 +76,10 @@ HEX = $(TARGET).hex
 LST = $(TARGET).lst
 MAP = $(TARGET).map
 
-.PHONY: all clean size disasm all-targets newlib-targets help build-newlib install-newlib
+.PHONY: all clean size disasm all-targets all-newlib-targets newlib-targets help build-newlib install-newlib
 
-# Default: build all firmware
-all: all-targets
+# Default: build all firmware (bare-metal + newlib if available)
+all: all-targets all-newlib-targets
 
 # Build all firmware targets
 all-targets:
@@ -93,9 +93,33 @@ all-targets:
 	done
 	@echo ""
 	@echo "========================================="
-	@echo "All firmware built successfully!"
+	@echo "All bare-metal firmware built successfully!"
 	@echo "========================================="
 	@ls -lh *.bin
+
+# Build newlib targets if newlib is installed
+all-newlib-targets:
+	@echo ""
+	@if [ -d "$(NEWLIB_INSTALL)" ]; then \
+		echo "=========================================" ; \
+		echo "Building newlib-based targets..." ; \
+		echo "=========================================" ; \
+		for target in $(NEWLIB_TARGETS); do \
+			echo "" ; \
+			echo "Building $$target (with newlib)..." ; \
+			$(MAKE) TARGET=$$target USE_NEWLIB=1 single-target || exit 1; \
+		done ; \
+		echo "" ; \
+		echo "=========================================" ; \
+		echo "All newlib targets built successfully!" ; \
+		echo "=========================================" ; \
+		ls -lh printf_test.bin 2>/dev/null || true ; \
+	else \
+		echo "=========================================" ; \
+		echo "Newlib not installed - skipping newlib targets" ; \
+		echo "Run 'make newlib-install' from top-level to enable" ; \
+		echo "=========================================" ; \
+	fi
 
 # Build all newlib-based targets
 newlib-targets: check-newlib
