@@ -522,7 +522,7 @@ static void run_pattern_test(const char *pattern_name,
         }
     }
 
-    // Stop timer
+    // Stop timer - timer stays off until next test
     TIMER_CR = 0x00000000;
 
     // Calculate average
@@ -531,11 +531,6 @@ static void run_pattern_test(const char *pattern_name,
         printf("  Average: %u.%02u MB/s\r\n",
                avg / 1000000,
                (avg % 1000000) / 10000);
-    }
-
-    // Drain UART
-    while (UART_RX_STATUS & 0x01) {
-        (void)(UART_RX_DATA);
     }
 
     (void)dummy;  // Prevent optimization
@@ -595,14 +590,23 @@ static void test_throughput(void) {
     run_pattern_test("16-bit writes", src, dst, buf_size, 0, 2);
     run_pattern_test("32-bit writes", src, dst, buf_size, 0, 4);
 
-    // Clean shutdown
-    TIMER_CR = 0x00000000;
-    TIMER_SR = 0x00000001;
-    irq_disable();
-
     printf("\r\n========================================\r\n");
     printf("Throughput benchmark complete!\r\n");
     printf("========================================\r\n");
+
+    // Simple clean shutdown - just stop timer and disable interrupts
+    TIMER_CR = 0x00000000;      // Stop timer
+    irq_disable();              // Disable interrupts
+
+    // Drain UART buffer of any keypresses during tests
+    while (UART_RX_STATUS & 0x01) {
+        (void)(UART_RX_DATA);
+    }
+
+    // Reset global state
+    new_second = 0;
+    bytes_processed = 0;
+    seconds_elapsed = 0;
 
     free(src);
     free(dst);
