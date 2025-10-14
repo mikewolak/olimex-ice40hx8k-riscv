@@ -413,7 +413,9 @@ bootloader/
 firmware/
 ├── led_blink.hex          # LED animation demo
 ├── interactive.hex        # UART echo server
-└── button_demo.hex        # Button polling example
+├── button_demo.hex        # Button polling example
+├── timer_clock.hex        # Real-time clock demo
+└── irq_timer_test.hex     # Timer interrupt validation (10kHz IRQ)
 ```
 
 ### Programming the FPGA
@@ -502,7 +504,9 @@ olimex-ice40hx8k-riscv-intr/
 │   ├── led_blink.c               # LED animation example
 │   ├── interactive.c             # UART echo server
 │   ├── button_demo.c             # Button polling demo
-│   ├── start.S                   # Startup assembly (RV32E)
+│   ├── timer_clock.c             # Real-time clock demo
+│   ├── irq_timer_test.c          # Timer interrupt validation (10kHz IRQ)
+│   ├── start.S                   # Startup assembly (RV32I)
 │   ├── linker.ld                 # Linker script (SRAM @ 0x0)
 │   ├── sections.lds              # Section definitions
 │   └── Makefile                  # Build *.hex files
@@ -513,7 +517,7 @@ olimex-ice40hx8k-riscv-intr/
 │
 ├── tools/                        # Development utilities
 │   └── uploader/                 # Firmware upload tool
-│       ├── fw_upload             # Python UART uploader
+│       ├── fw_upload             # C-based UART uploader
 │       └── README.md             # Usage instructions
 │
 ├── build/                        # Synthesis outputs (generated)
