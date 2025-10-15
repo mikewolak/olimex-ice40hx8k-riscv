@@ -43,6 +43,11 @@ MICRORL_DIR = ../lib/microrl
 MICRORL_SRC = $(MICRORL_DIR)/microrl.c
 MICRORL_OBJ = microrl.o
 
+# Incurses library paths
+INCURSES_DIR = ../lib/incurses
+INCURSES_SRC = $(INCURSES_DIR)/incurses.c
+INCURSES_OBJ = incurses.o
+
 # Use newlib flag (set USE_NEWLIB=1 to link with newlib)
 USE_NEWLIB ?= 0
 
@@ -57,9 +62,9 @@ CFLAGS = -march=$(ARCH) -mabi=$(ABI) -O2 -g
 CFLAGS += -Wall -Wextra
 CFLAGS += -ffreestanding -fno-builtin
 
-# Hexedit uses microRL and Simple Upload
+# Hexedit uses microRL, Simple Upload, and incurses
 ifeq ($(TARGET),hexedit)
-    CFLAGS += -I$(MICRORL_DIR) -I$(SIMPLE_UPLOAD_DIR)
+    CFLAGS += -I$(MICRORL_DIR) -I$(SIMPLE_UPLOAD_DIR) -I$(INCURSES_DIR)
 endif
 
 # Conditional flags based on newlib usage
@@ -84,10 +89,10 @@ else
     $(info Building WITHOUT newlib (bare metal))
 endif
 
-# Add Simple Upload object for hexedit
+# Add Simple Upload and incurses objects for hexedit
 ifeq ($(TARGET),hexedit)
-    LIBS := $(SIMPLE_UPLOAD_OBJ) $(LIBS)
-    $(info Building hexedit with Simple Upload support)
+    LIBS := $(SIMPLE_UPLOAD_OBJ) $(INCURSES_OBJ) $(LIBS)
+    $(info Building hexedit with Simple Upload and incurses support)
 endif
 
 # Output files
@@ -181,11 +186,16 @@ $(SIMPLE_UPLOAD_OBJ): $(SIMPLE_UPLOAD_SRC)
 $(MICRORL_OBJ): $(MICRORL_SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Compile incurses library (needed for hexedit)
+$(INCURSES_OBJ): $(INCURSES_SRC)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # Link ELF
 $(ELF): $(SOURCES) $(ASM_SOURCES) linker.ld
 ifeq ($(TARGET),hexedit)
 	$(MAKE) $(SIMPLE_UPLOAD_OBJ)
 	$(MAKE) $(MICRORL_OBJ)
+	$(MAKE) $(INCURSES_OBJ)
 endif
 ifeq ($(USE_NEWLIB),1)
 	$(MAKE) $(SYSCALLS_OBJ)

@@ -21,8 +21,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <ctype.h>
 #include "../lib/simple_upload/simple_upload.h"
 #include "../lib/microrl/microrl.h"
+#include "../lib/incurses/curses.h"
 
 // Hardware addresses
 #define UART_TX_DATA   (*(volatile uint32_t *)0x80000000)
@@ -393,6 +395,229 @@ void cmd_simple_upload(uint32_t addr) {
 }
 
 //==============================================================================
+// Visual Hex Editor (incurses-based)
+//==============================================================================
+
+// Visual hex editor with curses interface
+void cmd_visual(uint32_t start_addr) {
+    int cursor_x = 0;   // 0-15 (byte column)
+    int cursor_y = 0;   // 0-21 (row on screen)
+    uint32_t top_addr = start_addr & ~0xF;  // Align to 16-byte boundary
+    int editing = 0;    // Edit mode flag
+    int edit_nibble = 0; // 0=high nibble, 1=low nibble
+    uint8_t edit_value = 0;
+
+    // Initialize curses
+    initscr();
+    noecho();
+    raw();
+    keypad(stdscr, TRUE);
+
+    while (1) {
+        // Clear screen
+        clear();
+
+        // Draw title bar
+        move(0, 0);
+        attron(A_REVERSE);
+        addstr("Visual Hex Editor - Arrow keys:navigate Enter:edit ESC:exit q:quit");
+        for (int i = 68; i < COLS; i++) addch(' ');
+        standend();
+
+        // Draw hex grid (22 rows of 16 bytes each)
+        for (int row = 0; row < 22; row++) {
+            uint32_t addr = top_addr + (row * 16);
+            move(row + 2, 0);
+
+            // Print address
+            char addr_str[12];
+            snprintf(addr_str, sizeof(addr_str), "%08X: ", (unsigned int)addr);
+            addstr(addr_str);
+
+            // Print hex bytes
+            for (int col = 0; col < 16; col++) {
+                uint8_t byte = ((uint8_t *)(addr))[col];
+
+                // Highlight current byte
+                if (row == cursor_y && col == cursor_x && !editing) {
+                    attron(A_REVERSE);
+                }
+
+                // Print hex byte
+                char hex_str[4];
+                snprintf(hex_str, sizeof(hex_str), "%02X ", byte);
+                addstr(hex_str);
+
+                if (row == cursor_y && col == cursor_x && !editing) {
+                    standend();
+                }
+            }
+
+            // Print ASCII
+            addstr(" ");
+            for (int col = 0; col < 16; col++) {
+                uint8_t byte = ((uint8_t *)(addr))[col];
+                char c = (byte >= 32 && byte < 127) ? byte : '.';
+
+                if (row == cursor_y && col == cursor_x && !editing) {
+                    attron(A_REVERSE);
+                }
+
+                addch(c);
+
+                if (row == cursor_y && col == cursor_x && !editing) {
+                    standend();
+                }
+            }
+        }
+
+        // Status bar
+        move(LINES - 1, 0);
+        attron(A_REVERSE);
+        char status[COLS + 1];
+        uint32_t current_addr = top_addr + (cursor_y * 16) + cursor_x;
+        uint8_t current_byte = ((uint8_t *)current_addr)[0];
+        snprintf(status, sizeof(status),
+                 "Addr:0x%08X  Value:0x%02X (%u)  %s",
+                 (unsigned int)current_addr,
+                 current_byte,
+                 current_byte,
+                 editing ? "EDIT MODE - Type hex digits" : "");
+        addstr(status);
+        for (int i = strlen(status); i < COLS; i++) addch(' ');
+        standend();
+
+        // If editing, show edit value
+        if (editing) {
+            move(cursor_y + 2, 10 + (cursor_x * 3) + edit_nibble);
+        }
+
+        refresh();
+
+        // Get key
+        int ch = getch();
+
+        if (editing) {
+            // Edit mode - accept hex digits
+            if (ch >= '0' && ch <= '9') {
+                int digit = ch - '0';
+                if (edit_nibble == 0) {
+                    edit_value = (digit << 4);
+                    edit_nibble = 1;
+                } else {
+                    edit_value |= digit;
+                    // Write the byte
+                    uint32_t addr = top_addr + (cursor_y * 16) + cursor_x;
+                    *((uint8_t *)addr) = edit_value;
+                    editing = 0;
+                    edit_nibble = 0;
+                    // Move to next byte
+                    cursor_x++;
+                    if (cursor_x >= 16) {
+                        cursor_x = 0;
+                        cursor_y++;
+                        if (cursor_y >= 22) {
+                            cursor_y = 21;
+                            top_addr += 16;
+                        }
+                    }
+                }
+            } else if ((ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
+                int digit = ((ch & 0xDF) - 'A') + 10;  // Convert to uppercase and get 10-15
+                if (edit_nibble == 0) {
+                    edit_value = (digit << 4);
+                    edit_nibble = 1;
+                } else {
+                    edit_value |= digit;
+                    // Write the byte
+                    uint32_t addr = top_addr + (cursor_y * 16) + cursor_x;
+                    *((uint8_t *)addr) = edit_value;
+                    editing = 0;
+                    edit_nibble = 0;
+                    // Move to next byte
+                    cursor_x++;
+                    if (cursor_x >= 16) {
+                        cursor_x = 0;
+                        cursor_y++;
+                        if (cursor_y >= 22) {
+                            cursor_y = 21;
+                            top_addr += 16;
+                        }
+                    }
+                }
+            } else if (ch == 27) {  // ESC - cancel edit
+                editing = 0;
+                edit_nibble = 0;
+            }
+        } else {
+            // Navigation mode
+            switch (ch) {
+                case 27:   // ESC - exit visual mode
+                case 'q':
+                case 'Q':
+                    endwin();
+                    return;
+
+                case '\n':  // Enter - start editing
+                case '\r':
+                    editing = 1;
+                    edit_nibble = 0;
+                    edit_value = 0;
+                    break;
+
+                // Arrow keys (curses KEY_* constants)
+                case 'h':  // Left (vi-style)
+                case 68:   // Left arrow (if keypad works)
+                    if (cursor_x > 0) cursor_x--;
+                    break;
+
+                case 'l':  // Right (vi-style)
+                case 67:   // Right arrow
+                    if (cursor_x < 15) cursor_x++;
+                    break;
+
+                case 'k':  // Up (vi-style)
+                case 65:   // Up arrow
+                    if (cursor_y > 0) {
+                        cursor_y--;
+                    } else if (top_addr >= 16) {
+                        top_addr -= 16;
+                    }
+                    break;
+
+                case 'j':  // Down (vi-style)
+                case 66:   // Down arrow
+                    if (cursor_y < 21) {
+                        cursor_y++;
+                    } else {
+                        top_addr += 16;
+                    }
+                    break;
+
+                case ' ':  // Page down
+                case 'f':  // Page forward
+                    top_addr += (22 * 16);
+                    break;
+
+                case 'b':  // Page back
+                    if (top_addr >= (22 * 16)) {
+                        top_addr -= (22 * 16);
+                    } else {
+                        top_addr = 0;
+                    }
+                    break;
+
+                case 'g':  // Go to address (simple version - go to start)
+                    top_addr = 0;
+                    cursor_x = 0;
+                    cursor_y = 0;
+                    break;
+            }
+        }
+    }
+}
+
+//==============================================================================
 // MicroRL Callbacks
 //==============================================================================
 
@@ -566,6 +791,19 @@ void execute_command(const char *cmd) {
             break;
         }
 
+        case 'v':  // Visual hex editor
+        case 'V': {
+            uint32_t addr = 0;
+            if (*cmd != '\0') {
+                addr = parse_hex(cmd, &cmd);
+            }
+            cmd_visual(addr);
+            // After exiting visual mode, clear screen and show prompt
+            uart_puts("\033[2J\033[H");  // Clear screen, home cursor
+            uart_puts("Exited visual mode\n");
+            break;
+        }
+
         case 'h':  // Help
         case 'H':
         case '?': {
@@ -577,6 +815,7 @@ void execute_command(const char *cmd) {
             uart_puts("  w <addr> <value>         - Write byte\n");
             uart_puts("  c <src> <dst> <len>      - Copy memory block\n");
             uart_puts("  f <addr> <len> <val>     - Fill memory\n");
+            uart_puts("  v [addr]                 - Visual hex editor (curses)\n");
             uart_puts("  t                        - Toggle clock display on/off\n");
             uart_puts("  up [addr]                - Upload file (bootloader protocol)\n");
             uart_puts("  h or ?                   - This help\n");
