@@ -401,7 +401,7 @@ void cmd_simple_upload(uint32_t addr) {
 // Visual hex editor with curses interface
 void cmd_visual(uint32_t start_addr) {
     int cursor_x = 0;   // 0-15 (byte column) or 0-7 (word) or 0-3 (dword)
-    int cursor_y = 0;   // 0-21 (row on screen)
+    int cursor_y = 0;   // 0-20 (row on screen)
     uint32_t top_addr = start_addr & ~0xF;  // Align to 16-byte boundary
     int editing = 0;    // Edit mode flag
     int edit_nibble = 0; // Current nibble being edited
@@ -440,8 +440,8 @@ void cmd_visual(uint32_t start_addr) {
             for (int i = strlen(title); i < COLS; i++) addch(' ');
             standend();
 
-            // Draw hex grid (22 rows of 16 bytes each)
-            for (int row = 0; row < 22; row++) {
+            // Draw hex grid (21 rows of 16 bytes each)
+            for (int row = 0; row < 21; row++) {
                 uint32_t addr = top_addr + (row * 16);
                 move(row + 2, 0);
 
@@ -689,8 +689,8 @@ void cmd_visual(uint32_t start_addr) {
                     if (cursor_x > max_cursor_x) {
                         cursor_x = 0;
                         cursor_y++;
-                        if (cursor_y >= 22) {
-                            cursor_y = 21;
+                        if (cursor_y >= 21) {
+                            cursor_y = 20;
                             top_addr += 16;
                             need_full_redraw = 1;
                         }
@@ -764,9 +764,9 @@ void cmd_visual(uint32_t start_addr) {
                         if (match) {
                             // Center the display on the found address
                             uint32_t found_row = (addr & ~0xF);  // Align to 16-byte boundary
-                            // Try to center vertically (11 rows above the found position)
-                            if (found_row >= (11 * 16)) {
-                                top_addr = found_row - (11 * 16);
+                            // Try to center vertically (10 rows above puts result in middle)
+                            if (found_row >= (10 * 16)) {
+                                top_addr = found_row - (10 * 16);
                             } else {
                                 top_addr = 0;
                             }
@@ -850,7 +850,7 @@ void cmd_visual(uint32_t start_addr) {
 
                 case 'j':  // Down (vi-style)
                 case 66:   // Down arrow
-                    if (cursor_y < 21) {
+                    if (cursor_y < 20) {
                         old_cursor_x = cursor_x;
                         old_cursor_y = cursor_y;
                         cursor_y++;
@@ -862,13 +862,13 @@ void cmd_visual(uint32_t start_addr) {
 
                 case ' ':  // Page down
                 case 'f':  // Page forward
-                    top_addr += (22 * 16);
+                    top_addr += (21 * 16);
                     need_full_redraw = 1;
                     break;
 
                 case 'b':  // Page back
-                    if (top_addr >= (22 * 16)) {
-                        top_addr -= (22 * 16);
+                    if (top_addr >= (21 * 16)) {
+                        top_addr -= (21 * 16);
                     } else {
                         top_addr = 0;
                     }
