@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #define ESC "\x1b"
 
@@ -358,6 +359,28 @@ noecho(void)
 }
 
 int
+echo(void)
+{
+    G(echo) = 1;
+    return OK;
+}
+
+int
+cbreak(void)
+{
+    /* Embedded systems are already in "cbreak" mode (character-at-a-time) */
+    return OK;
+}
+
+int
+timeout(int delay)
+{
+    /* Timeout not supported in embedded - always non-blocking */
+    (void)delay;
+    return OK;
+}
+
+int
 keypad(WINDOW *win, bool bf)
 {
     (void)win;
@@ -524,6 +547,127 @@ unctrl(chtype c)
         repr[2] = 0;
     }
     return repr;
+}
+
+/*-----------------------------------------------------------------------
+ *	Window functions (compatibility - all map to stdscr)
+ *-----------------------------------------------------------------------*/
+WINDOW *
+newwin(int nlines, int ncols, int begin_y, int begin_x)
+{
+    /* Embedded incurses only supports stdscr - ignore window parameters */
+    (void)nlines;
+    (void)ncols;
+    (void)begin_y;
+    (void)begin_x;
+    return stdscr;
+}
+
+int
+delwin(WINDOW *win)
+{
+    /* Can't delete stdscr */
+    (void)win;
+    return OK;
+}
+
+int
+box(WINDOW *win, chtype verch, chtype horch)
+{
+    /* Draw box around current screen - simplified version */
+    (void)win;
+    (void)verch;
+    (void)horch;
+
+    /* Top border */
+    move(0, 0);
+    addch('+');
+    for (int i = 1; i < COLS - 1; i++) addch('-');
+    addch('+');
+
+    /* Side borders */
+    for (int i = 1; i < LINES - 1; i++) {
+        move(i, 0);
+        addch('|');
+        move(i, COLS - 1);
+        addch('|');
+    }
+
+    /* Bottom border */
+    move(LINES - 1, 0);
+    addch('+');
+    for (int i = 1; i < COLS - 1; i++) addch('-');
+    addch('+');
+
+    return OK;
+}
+
+int
+wmove(WINDOW *win, int y, int x)
+{
+    (void)win;
+    return move(y, x);
+}
+
+int
+waddch(WINDOW *win, chtype ch)
+{
+    (void)win;
+    return addch(ch);
+}
+
+int
+wprintw(WINDOW *win, const char *fmt, ...)
+{
+    (void)win;
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    addstr(buf);
+    return OK;
+}
+
+int
+printw(const char *fmt, ...)
+{
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    addstr(buf);
+    return OK;
+}
+
+int
+wclear(WINDOW *win)
+{
+    (void)win;
+    return clear();
+}
+
+int
+wrefresh(WINDOW *win)
+{
+    (void)win;
+    return refresh();
+}
+
+int
+wnoutrefresh(WINDOW *win)
+{
+    (void)win;
+    /* No-op in embedded incurses - refresh is immediate */
+    return OK;
+}
+
+int
+doupdate(void)
+{
+    /* No-op in embedded incurses - refresh is immediate */
+    return refresh();
 }
 
 /*-----------------------------------------------------------------------

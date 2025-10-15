@@ -68,6 +68,15 @@ enum {
 #define LINES 24
 #define COLS 80
 
+/* Arrow key codes (for compatibility) */
+#define KEY_UP    65
+#define KEY_DOWN  66
+#define KEY_RIGHT 67
+#define KEY_LEFT  68
+
+/* Function keys */
+#define KEY_F(n)  (256 + (n))
+
 enum {
   A_NORMAL    = ((attr_t)0x0000),
   A_UNDERLINE = ((attr_t)0x0001),
@@ -121,6 +130,9 @@ extern int flushinp(void);
 extern int noraw(void);
 extern int raw(void);
 extern int noecho(void);
+extern int echo(void);
+extern int cbreak(void);
+extern int timeout(int);
 extern int keypad(WINDOW *, bool);
 extern int curs_set(bool);
 extern int addch(chtype);
@@ -132,6 +144,19 @@ extern int clrtoeol(void);
 extern int move(int, int);
 extern int refresh(void);
 extern char *unctrl(chtype);
+
+/* Window functions (compatibility - all map to stdscr) */
+extern WINDOW *newwin(int, int, int, int);
+extern int delwin(WINDOW *);
+extern int box(WINDOW *, chtype, chtype);
+extern int wmove(WINDOW *, int, int);
+extern int waddch(WINDOW *, chtype);
+extern int wprintw(WINDOW *, const char *, ...);
+extern int printw(const char *, ...);
+extern int wclear(WINDOW *);
+extern int wrefresh(WINDOW *);
+extern int wnoutrefresh(WINDOW *);
+extern int doupdate(void);
 
 #ifdef __cplusplus
 }
