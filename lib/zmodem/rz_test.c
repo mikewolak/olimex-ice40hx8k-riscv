@@ -64,10 +64,11 @@ static void stdio_putc(uint8_t c) {
 int main(void) {
     fprintf(stderr, "Waiting to receive file...\n");
 
-    // Allocate receive buffer (1MB max)
-    uint8_t *buffer = malloc(1024 * 1024);
+    // Allocate receive buffer (protocol supports up to 4GB, allocate 1GB for testing)
+    size_t buffer_size = 1024UL * 1024 * 1024;  // 1GB
+    uint8_t *buffer = malloc(buffer_size);
     if (!buffer) {
-        fprintf(stderr, "Error: Out of memory\n");
+        fprintf(stderr, "Error: Out of memory (tried to allocate %zu MB)\n", buffer_size / (1024*1024));
         return 1;
     }
 
@@ -84,7 +85,7 @@ int main(void) {
     // Receive file
     uint32_t bytes_received;
     char filename[256];
-    zm_error_t err = zm_receive_file(&ctx, buffer, 1024*1024, &bytes_received, filename);
+    zm_error_t err = zm_receive_file(&ctx, buffer, buffer_size, &bytes_received, filename);
 
     if (err == ZM_OK) {
         fprintf(stderr, "Received: %s (%u bytes)\n", filename, bytes_received);

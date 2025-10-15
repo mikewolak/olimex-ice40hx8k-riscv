@@ -83,8 +83,14 @@ int main(int argc, char *argv[]) {
     long file_size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
-    if (file_size > 1024*1024) {  // Limit to 1MB for testing
-        fprintf(stderr, "Error: File too large (max 1MB)\n");
+    if (file_size < 0) {
+        fprintf(stderr, "Error: Cannot determine file size\n");
+        fclose(fp);
+        return 1;
+    }
+
+    if (file_size > 0xFFFFFFFF) {  // Protocol limit: 4GB
+        fprintf(stderr, "Error: File too large (max 4GB)\n");
         fclose(fp);
         return 1;
     }
