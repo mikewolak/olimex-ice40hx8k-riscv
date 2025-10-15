@@ -296,6 +296,8 @@ endwin(void)
 int
 idlok(WINDOW *win, bool bf)
 {
+    (void)win;
+    (void)bf;
     return OK;
 }
 
@@ -358,6 +360,7 @@ noecho(void)
 int
 keypad(WINDOW *win, bool bf)
 {
+    (void)win;
     G(keypad) = bf;
     return OK;
 }
@@ -427,6 +430,7 @@ addnstr(const char *str, int n)
 int
 attr_on(attr_t on, void *opts)
 {
+    (void)opts;
     attr_t attr = G(attr);
     attr |= on & INCURSES_ATTR_MASK;
     if (on & INCURSES_FG_MASK) {
