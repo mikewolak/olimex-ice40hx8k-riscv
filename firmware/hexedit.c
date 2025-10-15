@@ -51,6 +51,7 @@ volatile uint32_t clock_seconds = 0;  // Seconds counter (0-59)
 volatile uint32_t clock_minutes = 0;  // Minutes counter (0-59)
 volatile uint32_t clock_hours = 0;    // Hours counter (0-23)
 volatile uint8_t clock_updated = 0;   // Flag: clock changed
+volatile uint8_t clock_enabled = 0;   // Flag: clock display enabled (0=off, 1=on)
 
 // Millisecond counter for timeouts (updated by interrupt)
 volatile uint32_t millis = 0;         // Total milliseconds since start
@@ -1007,6 +1008,22 @@ void execute_command(const char *cmd) {
             break;
         }
 
+        case 't':  // Toggle clock display
+        case 'T': {
+            clock_enabled = !clock_enabled;
+            if (clock_enabled) {
+                uart_puts("Clock display enabled\n");
+            } else {
+                uart_puts("Clock display disabled\n");
+                // Clear the clock area
+                uart_puts("\033[s");         // Save cursor
+                uart_puts("\033[1;60H");     // Move to clock position
+                uart_puts("               ");  // Clear with spaces
+                uart_puts("\033[u");         // Restore cursor
+            }
+            break;
+        }
+
         case 'h':  // Help
         case 'H':
         case '?': {
@@ -1018,6 +1035,7 @@ void execute_command(const char *cmd) {
             uart_puts("  w <addr> <value>         - Write byte\n");
             uart_puts("  c <src> <dst> <len>      - Copy memory block\n");
             uart_puts("  f <addr> <len> <val>     - Fill memory\n");
+            uart_puts("  t                        - Toggle clock display on/off\n");
             uart_puts("  up [addr]                - Upload file (bootloader protocol)\n");
             uart_puts("  z                        - ZMODEM receive file\n");
             uart_puts("  s <addr> <len> <name>    - ZMODEM send file\n");
@@ -1092,15 +1110,13 @@ int main(void) {
     uart_puts("===========================================\n");
     uart_puts("  PicoRV32 Hex Editor with ZMODEM + microRL\n");
     uart_puts("===========================================\n");
-    uart_puts("Type 'h' for help\n");
+    uart_puts("Type 'h' for help, 't' to toggle clock display\n");
     uart_puts("Features: Command history (UP/DOWN), line editing\n");
-    uart_puts("\n");
-    uart_puts("Clock display in top-right corner [HH:MM:SS:FF]\n");
     uart_puts("\n");
 
     while (1) {
-        // Update clock display if timer interrupt fired
-        if (clock_updated) {
+        // Update clock display if timer interrupt fired and enabled
+        if (clock_updated && clock_enabled) {
             clock_updated = 0;
             print_clock();
         }
