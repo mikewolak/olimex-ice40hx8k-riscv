@@ -592,38 +592,23 @@ void cmd_visual(uint32_t start_addr) {
         bytes_per_unit = (view_mode == 0) ? 1 : (view_mode == 1) ? 2 : 4;
         int hex_spacing = (view_mode == 0) ? 3 : (view_mode == 1) ? 5 : 9;
 
-        // Redraw old cursor position (unhighlight)
+        // Redraw old cursor position (unhighlight or keep highlighted if in selection)
         if (old_cursor_x >= 0 && old_cursor_y >= 0) {
             uint32_t old_addr = top_addr + (old_cursor_y * 16) + (old_cursor_x * bytes_per_unit);
 
-            // Unhighlight hex based on view mode
-            move(old_cursor_y + 2, 10 + (old_cursor_x * hex_spacing));
-            if (view_mode == 0) {
-                uint8_t value = ((uint8_t *)old_addr)[0];
-                char hex_str[4];
-                snprintf(hex_str, sizeof(hex_str), "%02X ", value);
-                addstr(hex_str);
-            } else if (view_mode == 1) {
-                uint16_t value = ((uint16_t *)old_addr)[0];
-                char hex_str[6];
-                snprintf(hex_str, sizeof(hex_str), "%04X ", (unsigned int)value);
-                addstr(hex_str);
-            } else {
-                uint32_t value = ((uint32_t *)old_addr)[0];
-                char hex_str[10];
-                snprintf(hex_str, sizeof(hex_str), "%08X ", (unsigned int)value);
-                addstr(hex_str);
+            // If we're marking and old position is still in the selection, keep it highlighted
+            int should_highlight = 0;
+            if (marking == 1) {
+                uint32_t current_addr = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
+                uint32_t range_start = (mark_start < current_addr) ? mark_start : current_addr;
+                uint32_t range_end = (mark_start < current_addr) ? current_addr : mark_start;
+                if (old_addr >= range_start && old_addr <= range_end) {
+                    should_highlight = 1;
+                }
             }
 
-            // Unhighlight ASCII (multiple bytes for word/dword)
-            // ASCII position: address (10) + hex width + space (1)
-            int hex_width = (max_cursor_x + 1) * hex_spacing;
-            for (int i = 0; i < bytes_per_unit; i++) {
-                uint8_t byte = ((uint8_t *)(old_addr + i))[0];
-                char c = (byte >= 32 && byte < 127) ? byte : '.';
-                move(old_cursor_y + 2, 10 + hex_width + 1 + (old_cursor_x * bytes_per_unit) + i);
-                addch(c);
-            }
+            // Use redraw_unit to properly handle highlighting state
+            redraw_unit(old_addr, top_addr, view_mode, should_highlight);
         }
 
         // Draw new cursor position (highlight)
