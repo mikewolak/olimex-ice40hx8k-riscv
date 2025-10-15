@@ -477,14 +477,17 @@ void cmd_visual(uint32_t start_addr) {
         char status[COLS + 1];
         uint32_t current_addr = top_addr + (cursor_y * 16) + cursor_x;
         uint8_t current_byte = ((uint8_t *)current_addr)[0];
+
+        // Show last key code for debugging
+        static int last_ch = 0;
         snprintf(status, sizeof(status),
-                 "Addr:0x%08X Val:0x%02X(%u) Cursor:(%d,%d) Top:0x%08X %s",
+                 "Addr:0x%08X Val:0x%02X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
                  (unsigned int)current_addr,
-                 current_byte,
                  current_byte,
                  cursor_x,
                  cursor_y,
-                 (unsigned int)top_addr,
+                 last_ch,
+                 last_ch,
                  editing ? "EDIT" : "");
         addstr(status);
         for (int i = strlen(status); i < COLS; i++) addch(' ');
@@ -504,6 +507,7 @@ void cmd_visual(uint32_t start_addr) {
 
         // Get key
         int ch = getch();
+        last_ch = ch;  // Save for debug display
 
         if (editing) {
             // Edit mode - accept hex digits
