@@ -59,6 +59,22 @@
 #define ZDLE  0x18
 
 //==============================================================================
+// PicoRV32 Interrupt Control (custom instructions)
+//==============================================================================
+
+// Enable interrupts (clear IRQ mask)
+static inline void irq_enable(void) {
+    uint32_t dummy;
+    __asm__ volatile (".insn r 0x0B, 6, 3, %0, %1, x0" : "=r"(dummy) : "r"(0));
+}
+
+// Disable interrupts (set IRQ mask to all 1s)
+static inline void irq_disable(void) {
+    uint32_t dummy;
+    __asm__ volatile (".insn r 0x0B, 6, 3, %0, %1, x0" : "=r"(dummy) : "r"(~0));
+}
+
+//==============================================================================
 // Forward Declarations
 //==============================================================================
 void timer_init(void);
@@ -110,12 +126,20 @@ int getc_timeout(uint32_t timeout_ms) {
 
 // Initialize timer for 1ms ticks (50MHz system clock)
 void timer_init(void) {
+    uint32_t old_mask;
+
+    // Disable interrupts during timer configuration
+    __asm__ volatile (".insn r 0x0B, 6, 3, %0, %1, x0" : "=r"(old_mask) : "r"(~0));
+
     TIMER_CR = 0;  // Disable timer
     TIMER_SR = TIMER_SR_UIF;  // Clear any pending interrupt
     TIMER_PSC = 49999;  // 50MHz / (49999+1) = 1000 Hz = 1ms ticks
     TIMER_ARR = 0xFFFFFFFF;  // Max count (free-running)
     TIMER_CNT = 0;  // Reset counter
     TIMER_CR = TIMER_CR_ENABLE;  // Enable timer
+
+    // Restore interrupt mask
+    __asm__ volatile (".insn r 0x0B, 6, 3, %0, %1, x0" : "=r"(old_mask) : "r"(old_mask));
 }
 
 // Get current time in milliseconds
