@@ -108,10 +108,11 @@ int getc_timeout(uint32_t timeout_ms) {
 // Timer Functions
 //==============================================================================
 
-// Initialize timer for 1ms ticks (assumes 12MHz clock)
+// Initialize timer for 1ms ticks (50MHz system clock)
 void timer_init(void) {
     TIMER_CR = 0;  // Disable timer
-    TIMER_PSC = 11999;  // 12MHz / (11999+1) = 1000 Hz = 1ms ticks
+    TIMER_SR = TIMER_SR_UIF;  // Clear any pending interrupt
+    TIMER_PSC = 49999;  // 50MHz / (49999+1) = 1000 Hz = 1ms ticks
     TIMER_ARR = 0xFFFFFFFF;  // Max count (free-running)
     TIMER_CNT = 0;  // Reset counter
     TIMER_CR = TIMER_CR_ENABLE;  // Enable timer
@@ -369,6 +370,18 @@ void cmd_zmodem_send(uint32_t addr, uint32_t len, const char *filename_arg) {
     uart_puts("Filename: ");
     uart_puts(filename_arg);
     uart_puts("\n");
+
+    // Debug: Check timer is working
+    uart_puts("Timer test: ");
+    uint32_t t1 = get_time_ms();
+    print_dec(t1);
+    uart_puts(" ");
+    uint32_t t2 = get_time_ms();
+    print_dec(t2);
+    uart_puts(" ");
+    uint32_t t3 = get_time_ms();
+    print_dec(t3);
+    uart_puts("\n");
     uart_puts("\n");
 
     // Set up ZMODEM context
@@ -381,9 +394,15 @@ void cmd_zmodem_send(uint32_t addr, uint32_t len, const char *filename_arg) {
     zm_ctx_t ctx;
     zm_init(&ctx, &callbacks);
 
+    uart_puts("[DEBUG] Starting zm_send_file...\n");
+
     // Send file
     uint8_t *buffer = (uint8_t *)addr;
     zm_error_t err = zm_send_file(&ctx, buffer, len, filename_arg);
+
+    uart_puts("[DEBUG] zm_send_file returned: ");
+    print_dec(-err);
+    uart_puts("\n");
 
     if (err == ZM_OK) {
         uart_puts("\n");
