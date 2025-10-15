@@ -120,6 +120,13 @@ char uart_getc(void) {
     return UART_RX_DATA & 0xFF;
 }
 
+// Flush UART RX buffer (discard all pending data)
+void uart_flush_rx(void) {
+    while (uart_getc_available()) {
+        (void)UART_RX_DATA;  // Discard byte
+    }
+}
+
 int getc_timeout(uint32_t timeout_ms) {
     uint32_t start = get_time_ms();
     while ((get_time_ms() - start) < timeout_ms) {
@@ -402,6 +409,9 @@ void cmd_zmodem_receive(void) {
     zm_ctx_t ctx;
     zm_init(&ctx, &callbacks);
 
+    // Flush UART RX buffer before starting transfer
+    uart_flush_rx();
+
     // Use buffer at heap-140KB
     uint8_t *buffer = (uint8_t *)ZM_BUFFER_ADDR;
     uint32_t bytes_received = 0;
@@ -470,6 +480,10 @@ void cmd_zmodem_send(uint32_t addr, uint32_t len, const char *filename_arg) {
 
     zm_ctx_t ctx;
     zm_init(&ctx, &callbacks);
+
+    // Flush UART RX buffer before starting transfer
+    uart_puts("[DEBUG] Flushing UART RX buffer...\n");
+    uart_flush_rx();
 
     uart_puts("[DEBUG] Starting zm_send_file...\n");
 
