@@ -519,10 +519,12 @@ void cmd_visual(uint32_t start_addr) {
             }
 
             // Unhighlight ASCII (multiple bytes for word/dword)
+            // ASCII position: address (10) + hex width + space (1)
+            int hex_width = (max_cursor_x + 1) * hex_spacing;
             for (int i = 0; i < bytes_per_unit; i++) {
                 uint8_t byte = ((uint8_t *)(old_addr + i))[0];
                 char c = (byte >= 32 && byte < 127) ? byte : '.';
-                move(old_cursor_y + 2, 10 + (16 * 3) + 1 + (old_cursor_x * bytes_per_unit) + i);
+                move(old_cursor_y + 2, 10 + hex_width + 1 + (old_cursor_x * bytes_per_unit) + i);
                 addch(c);
             }
         }
@@ -553,11 +555,13 @@ void cmd_visual(uint32_t start_addr) {
             standend();
 
             // Highlight ASCII (multiple bytes for word/dword)
+            // ASCII position: address (10) + hex width + space (1)
+            int hex_width = (max_cursor_x + 1) * hex_spacing;
             attron(A_REVERSE);
             for (int i = 0; i < bytes_per_unit; i++) {
                 uint8_t byte = ((uint8_t *)(new_addr + i))[0];
                 char c = (byte >= 32 && byte < 127) ? byte : '.';
-                move(cursor_y + 2, 10 + (16 * 3) + 1 + (cursor_x * bytes_per_unit) + i);
+                move(cursor_y + 2, 10 + hex_width + 1 + (cursor_x * bytes_per_unit) + i);
                 addch(c);
             }
             standend();
@@ -568,9 +572,6 @@ void cmd_visual(uint32_t start_addr) {
         attron(A_REVERSE);
         char status[COLS + 1];
         uint32_t current_addr = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
-
-        // Show last key code for debugging
-        static int last_ch = 0;
 
         // Display search input or normal status
         if (searching) {
@@ -583,21 +584,21 @@ void cmd_visual(uint32_t start_addr) {
             if (view_mode == 0) {
                 uint8_t value = ((uint8_t *)current_addr)[0];
                 snprintf(status, sizeof(status),
-                         "Addr:0x%08X Val:0x%02X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
-                         (unsigned int)current_addr, value, cursor_x, cursor_y,
-                         last_ch, last_ch, editing ? "EDIT" : "");
+                         "Addr:0x%08X Val:0x%02X %s",
+                         (unsigned int)current_addr, value,
+                         editing ? "EDIT" : "");
             } else if (view_mode == 1) {
                 uint16_t value = ((uint16_t *)current_addr)[0];
                 snprintf(status, sizeof(status),
-                         "Addr:0x%08X Val:0x%04X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
-                         (unsigned int)current_addr, (unsigned int)value, cursor_x, cursor_y,
-                         last_ch, last_ch, editing ? "EDIT" : "");
+                         "Addr:0x%08X Val:0x%04X %s",
+                         (unsigned int)current_addr, (unsigned int)value,
+                         editing ? "EDIT" : "");
             } else {
                 uint32_t value = ((uint32_t *)current_addr)[0];
                 snprintf(status, sizeof(status),
-                         "Addr:0x%08X Val:0x%08X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
-                         (unsigned int)current_addr, (unsigned int)value, cursor_x, cursor_y,
-                         last_ch, last_ch, editing ? "EDIT" : "");
+                         "Addr:0x%08X Val:0x%08X %s",
+                         (unsigned int)current_addr, (unsigned int)value,
+                         editing ? "EDIT" : "");
             }
             addstr(status);
             for (int i = strlen(status); i < COLS; i++) addch(' ');
@@ -622,7 +623,6 @@ void cmd_visual(uint32_t start_addr) {
 
         // Get key - handle escape sequences for arrow keys
         int ch = getch();
-        last_ch = ch;  // Save for debug display
 
         // Handle escape sequences (arrow keys send ESC [ A/B/C/D)
         if (ch == 27) {  // ESC
@@ -637,7 +637,6 @@ void cmd_visual(uint32_t start_addr) {
                     case 'D': ch = 68; break;  // Left arrow
                     default: ch = 27; break;   // Unknown, treat as ESC
                 }
-                last_ch = ch;  // Update debug display with final code
             }
             // If not '[', fall through with ESC
         }
