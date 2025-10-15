@@ -394,9 +394,12 @@ void cmd_fill(uint32_t addr, uint32_t len, uint8_t value) {
 //==============================================================================
 
 void cmd_zmodem_receive(void) {
+    // Flush UART RX buffer FIRST (before any messages)
+    uart_flush_rx();
+
     uart_puts("\n");
     uart_puts("=== ZMODEM Receive ===\n");
-    uart_puts("Waiting for sender to start transfer...\n");
+    uart_puts("Ready to receive. Start ZMODEM send from your terminal NOW.\n");
     uart_puts("(Send Ctrl-X five times from sender to cancel)\n");
     uart_puts("\n");
 
@@ -409,9 +412,6 @@ void cmd_zmodem_receive(void) {
 
     zm_ctx_t ctx;
     zm_init(&ctx, &callbacks);
-
-    // Flush UART RX buffer before starting transfer
-    uart_flush_rx();
 
     // Use buffer at heap-140KB
     uint8_t *buffer = (uint8_t *)ZM_BUFFER_ADDR;
@@ -448,6 +448,9 @@ void cmd_zmodem_receive(void) {
 }
 
 void cmd_zmodem_send(uint32_t addr, uint32_t len, const char *filename_arg) {
+    // Flush UART RX buffer FIRST (before any messages)
+    uart_flush_rx();
+
     uart_puts("\n");
     uart_puts("=== ZMODEM Send ===\n");
     uart_puts("Sending ");
@@ -458,18 +461,8 @@ void cmd_zmodem_send(uint32_t addr, uint32_t len, const char *filename_arg) {
     uart_puts("Filename: ");
     uart_puts(filename_arg);
     uart_puts("\n");
-
-    // Debug: Check timer is working
-    uart_puts("Timer test: ");
-    uint32_t t1 = get_time_ms();
-    print_dec(t1);
-    uart_puts(" ");
-    uint32_t t2 = get_time_ms();
-    print_dec(t2);
-    uart_puts(" ");
-    uint32_t t3 = get_time_ms();
-    print_dec(t3);
     uart_puts("\n");
+    uart_puts("Ready to send. Start ZMODEM receive in your terminal NOW.\n");
     uart_puts("\n");
 
     // Set up ZMODEM context
@@ -481,12 +474,6 @@ void cmd_zmodem_send(uint32_t addr, uint32_t len, const char *filename_arg) {
 
     zm_ctx_t ctx;
     zm_init(&ctx, &callbacks);
-
-    // Flush UART RX buffer before starting transfer
-    uart_puts("[DEBUG] Flushing UART RX buffer...\n");
-    uart_flush_rx();
-
-    uart_puts("[DEBUG] Starting zm_send_file...\n");
 
     // Send file
     uint8_t *buffer = (uint8_t *)addr;
@@ -519,10 +506,12 @@ void cmd_zmodem_send(uint32_t addr, uint32_t len, const char *filename_arg) {
 //==============================================================================
 
 void cmd_xmodem_receive(void) {
+    // Flush UART RX buffer FIRST (before any messages)
+    uart_flush_rx();
+
     uart_puts("\n");
     uart_puts("=== XMODEM-1K Receive ===\n");
-    uart_puts("Ready to receive file...\n");
-    uart_puts("Start XMODEM-1K send from your terminal now.\n");
+    uart_puts("Ready to receive. Start XMODEM-1K send from your terminal NOW.\n");
     uart_puts("(Press Ctrl-X multiple times to cancel)\n");
     uart_puts("\n");
 
@@ -535,9 +524,6 @@ void cmd_xmodem_receive(void) {
 
     xmodem_ctx_t ctx;
     xmodem_init(&ctx, &callbacks);
-
-    // Flush UART RX buffer before starting transfer
-    uart_flush_rx();
 
     // Use same buffer as ZMODEM at heap-140KB
     uint8_t *buffer = (uint8_t *)ZM_BUFFER_ADDR;
@@ -573,6 +559,9 @@ void cmd_xmodem_receive(void) {
 }
 
 void cmd_xmodem_send(uint32_t addr, uint32_t len) {
+    // Flush UART RX buffer FIRST (before any messages)
+    uart_flush_rx();
+
     uart_puts("\n");
     uart_puts("=== XMODEM-1K Send ===\n");
     uart_puts("Sending ");
@@ -581,11 +570,9 @@ void cmd_xmodem_send(uint32_t addr, uint32_t len) {
     print_hex_word(addr);
     uart_puts("\n");
     uart_puts("\n");
-    uart_puts("Instructions:\n");
-    uart_puts("1. Start XMODEM-1K (CRC) receive in your terminal\n");
-    uart_puts("2. Device will wait for 'C' from terminal (60 sec)\n");
+    uart_puts("Ready to send. Start XMODEM-1K (CRC) receive in your terminal NOW.\n");
+    uart_puts("Waiting for 'C' from receiver (60 sec timeout)...\n");
     uart_puts("\n");
-    uart_puts("Waiting for receiver...\n");
 
     // Set up XMODEM context (reuse ZMODEM callbacks)
     xmodem_callbacks_t callbacks = {
@@ -596,9 +583,6 @@ void cmd_xmodem_send(uint32_t addr, uint32_t len) {
 
     xmodem_ctx_t ctx;
     xmodem_init(&ctx, &callbacks);
-
-    // Flush UART RX buffer before starting transfer
-    uart_flush_rx();
 
     // Send file
     uint8_t *buffer = (uint8_t *)addr;
