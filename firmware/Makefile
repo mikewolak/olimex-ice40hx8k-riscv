@@ -47,7 +47,7 @@ MICRORL_OBJ = microrl.o
 USE_NEWLIB ?= 0
 
 # All firmware targets
-FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock hexedit
+FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock
 NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test
 
 # Compiler flags for RV32IM
@@ -99,7 +99,7 @@ MAP = $(TARGET).map
 
 .PHONY: all clean size disasm all-targets all-newlib-targets newlib-targets help build-newlib install-newlib
 
-# Default: build all firmware (bare-metal + newlib + ZMODEM if available)
+# Default: build all firmware (bare-metal + newlib + hexedit)
 all: all-targets all-newlib-targets hexedit
 
 # Build all firmware targets
