@@ -124,22 +124,23 @@ int getc_timeout(uint32_t timeout_ms) {
 // Timer Functions
 //==============================================================================
 
-// Initialize timer for 1ms ticks (50MHz system clock)
+// Initialize timer for millisecond timeouts (50MHz system clock)
+// Free-running counter for ZMODEM timeout detection
 void timer_init(void) {
-    uint32_t old_mask;
+    // Stop timer if running
+    TIMER_CR = 0x00000000;
 
-    // Disable interrupts during timer configuration
-    __asm__ volatile (".insn r 0x0B, 6, 3, %0, %1, x0" : "=r"(old_mask) : "r"(~0));
+    // Clear any pending interrupt
+    TIMER_SR = 0x00000001;
 
-    TIMER_CR = 0;  // Disable timer
-    TIMER_SR = TIMER_SR_UIF;  // Clear any pending interrupt
-    TIMER_PSC = 49999;  // 50MHz / (49999+1) = 1000 Hz = 1ms ticks
-    TIMER_ARR = 0xFFFFFFFF;  // Max count (free-running)
-    TIMER_CNT = 0;  // Reset counter
-    TIMER_CR = TIMER_CR_ENABLE;  // Enable timer
+    // Configure for free-running millisecond counter
+    // 50MHz / 50000 = 1kHz = 1ms per tick
+    TIMER_PSC = 49999;        // Divide by 50000 (PSC+1)
+    TIMER_ARR = 0xFFFFFFFF;   // Free-running (wraps after ~49 days)
+    TIMER_CNT = 0;            // Reset counter to 0
 
-    // Restore interrupt mask
-    __asm__ volatile (".insn r 0x0B, 6, 3, %0, %1, x0" : "=r"(old_mask) : "r"(old_mask));
+    // Start timer
+    TIMER_CR = 0x00000001;
 }
 
 // Get current time in milliseconds
