@@ -62,6 +62,10 @@
 void timer_init(void);
 uint32_t get_time_ms(void);
 
+// Global state for pagination
+static uint32_t last_dump_addr = 0;
+static uint32_t last_dump_len = 0x100;  // 256 bytes
+
 //==============================================================================
 // UART Functions
 //==============================================================================
@@ -245,6 +249,10 @@ void cmd_dump(uint32_t addr, uint32_t len) {
 
         puts("|\n");
     }
+
+    // Save for pagination
+    last_dump_addr = addr;
+    last_dump_len = len;
 }
 
 void cmd_write(uint32_t addr, uint8_t value) {
@@ -548,6 +556,7 @@ void execute_command(const char *cmd) {
             puts("\n");
             puts("Commands:\n");
             puts("  d <addr> [len]           - Dump memory (hex+ASCII)\n");
+            puts("  SPACE                    - Page to next 256 bytes\n");
             puts("  r <addr>                 - Read byte\n");
             puts("  w <addr> <value>         - Write byte\n");
             puts("  c <src> <dst> <len>      - Copy memory block\n");
@@ -557,6 +566,7 @@ void execute_command(const char *cmd) {
             puts("  h or ?                   - This help\n");
             puts("\n");
             puts("Addresses and values in hex (0x optional)\n");
+            puts("Default dump: 256 bytes (0x100)\n");
             puts("ZMODEM buffer at: 0x");
             print_hex_word(ZM_BUFFER_ADDR);
             puts(" (128KB max)\n");
@@ -600,6 +610,15 @@ int main(void) {
             puts("\n*** ZMODEM transfer detected! ***\n");
             cmd_zmodem_receive();
             cmd_buffer_init(&cmd_buf);
+            puts("> ");
+            continue;
+        }
+
+        // Spacebar: page to next 256 bytes
+        if (c == ' ') {
+            puts("\n");
+            uint32_t next_addr = last_dump_addr + last_dump_len;
+            cmd_dump(next_addr, 0x100);
             puts("> ");
             continue;
         }
