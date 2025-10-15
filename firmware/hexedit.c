@@ -1,6 +1,6 @@
 //==============================================================================
 // Olimex iCE40HX8K-EVB RISC-V Platform
-// hexedit.c - Interactive Hex Editor with ZMODEM File Transfer
+// hexedit.c - Interactive Hex Editor with Simple Upload Protocol
 //
 // Copyright (c) October 2025 Michael Wolak
 // Email: mikewolak@gmail.com, mike@epromfoundry.com
@@ -14,16 +14,13 @@
  * - Memory dump (hex and ASCII)
  * - Memory read/write
  * - Memory block copy/move
- * - ZMODEM file receive (auto-start detection)
+ * - Simple Upload (bootloader protocol) file transfer
  * - 128KB receive limit, buffer at heap-140KB
  */
 
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-#include "../lib/zmodem/zmodem.h"
-#include "../lib/xmodem/xmodem.h"
-#include "../lib/intelhex/intelhex.h"
 #include "../lib/simple_upload/simple_upload.h"
 #include "../lib/microrl/microrl.h"
 
@@ -63,14 +60,10 @@ volatile uint32_t millis = 0;         // Total milliseconds since start
 // Stack:           0x00042000 - 0x00080000 (grows down from 0x80000)
 #define HEAP_END       0x00042000   // Heap ends here (from linker script)
 
-// ZMODEM configuration
+// File transfer configuration
 #define ZM_MAX_RECEIVE    (128 * 1024)          // 128KB max transfer
 #define ZM_BUFFER_OFFSET  (140 * 1024)          // 140KB before heap end
 #define ZM_BUFFER_ADDR    (HEAP_END - ZM_BUFFER_OFFSET)
-
-// ZMODEM auto-start pattern: ZPAD ZPAD ZDLE ZHEX = 0x2A 0x2A 0x18 0x42
-// (ZPAD and ZHEX defined in zmodem.h)
-#define ZDLE  0x18
 
 //==============================================================================
 // PicoRV32 Interrupt Control (custom instructions)
@@ -206,7 +199,7 @@ void timer_init(void) {
     TIMER_CR = 0x00000001;
 }
 
-// Get current time in milliseconds (for ZMODEM timeouts)
+// Get current time in milliseconds
 uint32_t get_time_ms(void) {
     return millis;
 }
@@ -256,56 +249,6 @@ void print_dec(uint32_t n) {
     while (i > 0) {
         uart_putc(buf[--i]);
     }
-}
-
-//==============================================================================
-// ZMODEM Auto-Start Detection
-//==============================================================================
-
-typedef struct {
-    uint8_t pattern[4];
-    int index;
-} zmodem_detector_t;
-
-void zmodem_detector_init(zmodem_detector_t *det) {
-    det->pattern[0] = 0x2A;  // ZPAD
-    det->pattern[1] = 0x2A;  // ZPAD
-    det->pattern[2] = ZDLE;
-    det->pattern[3] = 0x42;  // ZHEX
-    det->index = 0;
-}
-
-int zmodem_detector_feed(zmodem_detector_t *det, char c) {
-    if (c == det->pattern[det->index]) {
-        det->index++;
-        if (det->index == 4) {
-            det->index = 0;
-            return 1;  // Pattern detected!
-        }
-    } else {
-        det->index = 0;
-        // Check if this char starts the pattern
-        if (c == det->pattern[0]) {
-            det->index = 1;
-        }
-    }
-    return 0;
-}
-
-//==============================================================================
-// ZMODEM Callbacks for UART
-//==============================================================================
-
-int zm_uart_getc(uint32_t timeout_ms) {
-    return getc_timeout(timeout_ms);
-}
-
-void zm_uart_putc(uint8_t c) {
-    uart_putc(c);
-}
-
-uint32_t zm_get_time(void) {
-    return get_time_ms();
 }
 
 //==============================================================================
@@ -390,328 +333,6 @@ void cmd_fill(uint32_t addr, uint32_t len, uint8_t value) {
     uart_puts(" with 0x");
     print_hex_byte(value);
     uart_puts("\n");
-}
-
-//==============================================================================
-// ZMODEM Receive
-//==============================================================================
-
-void cmd_zmodem_receive(void) {
-    // Flush UART RX buffer FIRST (before any messages)
-    uart_flush_rx();
-
-    uart_puts("\n");
-    uart_puts("=== ZMODEM Receive ===\n");
-    uart_puts("Ready to receive. Start ZMODEM send from your terminal NOW.\n");
-    uart_puts("(Send Ctrl-X five times from sender to cancel)\n");
-    uart_puts("\n");
-
-    // Set up ZMODEM context
-    zm_callbacks_t callbacks = {
-        .getc = zm_uart_getc,
-        .putc = zm_uart_putc,
-        .gettime = zm_get_time
-    };
-
-    zm_ctx_t ctx;
-    zm_init(&ctx, &callbacks);
-
-    // Use buffer at heap-140KB
-    uint8_t *buffer = (uint8_t *)ZM_BUFFER_ADDR;
-    uint32_t bytes_received = 0;
-    char filename[64];
-
-    // Receive file
-    zm_error_t err = zm_receive_file(&ctx, buffer, ZM_MAX_RECEIVE, &bytes_received, filename);
-
-    if (err == ZM_OK) {
-        uart_puts("\n");
-        uart_puts("=== Transfer Complete ===\n");
-        uart_puts("Received: ");
-        uart_puts(filename);
-        uart_puts("\n");
-        uart_puts("Size: ");
-        print_dec(bytes_received);
-        uart_puts(" bytes\n");
-        uart_puts("Buffer: 0x");
-        print_hex_word(ZM_BUFFER_ADDR);
-        uart_puts("\n");
-        uart_puts("\n");
-        uart_puts("Use 'c <src> <dst> <len>' to copy data elsewhere\n");
-    } else if (err == ZM_CANCEL) {
-        uart_puts("\n*** Transfer cancelled ***\n");
-    } else if (err == ZM_TIMEOUT) {
-        uart_puts("\n*** Transfer timeout ***\n");
-    } else {
-        uart_puts("\n");
-        uart_puts("Transfer failed with error: ");
-        print_dec(-err);
-        uart_puts("\n");
-    }
-}
-
-void cmd_zmodem_send(uint32_t addr, uint32_t len, const char *filename_arg) {
-    // Flush UART RX buffer FIRST (before any messages)
-    uart_flush_rx();
-
-    uart_puts("\n");
-    uart_puts("=== ZMODEM Send ===\n");
-    uart_puts("Sending ");
-    print_dec(len);
-    uart_puts(" bytes from 0x");
-    print_hex_word(addr);
-    uart_puts("\n");
-    uart_puts("Filename: ");
-    uart_puts(filename_arg);
-    uart_puts("\n");
-    uart_puts("\n");
-    uart_puts("Ready to send. Start ZMODEM receive in your terminal NOW.\n");
-    uart_puts("\n");
-
-    // Set up ZMODEM context
-    zm_callbacks_t callbacks = {
-        .getc = zm_uart_getc,
-        .putc = zm_uart_putc,
-        .gettime = zm_get_time
-    };
-
-    zm_ctx_t ctx;
-    zm_init(&ctx, &callbacks);
-
-    // Send file
-    uint8_t *buffer = (uint8_t *)addr;
-    zm_error_t err = zm_send_file(&ctx, buffer, len, filename_arg);
-
-    uart_puts("[DEBUG] zm_send_file returned: ");
-    print_dec(-err);
-    uart_puts("\n");
-
-    if (err == ZM_OK) {
-        uart_puts("\n");
-        uart_puts("=== Transfer Complete ===\n");
-        uart_puts("Sent ");
-        print_dec(len);
-        uart_puts(" bytes\n");
-    } else if (err == ZM_CANCEL) {
-        uart_puts("\n*** Transfer cancelled by receiver ***\n");
-    } else if (err == ZM_TIMEOUT) {
-        uart_puts("\n*** Transfer timeout ***\n");
-    } else {
-        uart_puts("\n");
-        uart_puts("Transfer failed with error: ");
-        print_dec(-err);
-        uart_puts("\n");
-    }
-}
-
-//==============================================================================
-// XMODEM Commands
-//==============================================================================
-
-void cmd_xmodem_receive(void) {
-    // Flush UART RX buffer FIRST (before any messages)
-    uart_flush_rx();
-
-    uart_puts("\n");
-    uart_puts("=== XMODEM-1K Receive ===\n");
-    uart_puts("Ready to receive. Start XMODEM-1K send from your terminal NOW.\n");
-    uart_puts("(Press Ctrl-X multiple times to cancel)\n");
-    uart_puts("\n");
-
-    // Set up XMODEM context (reuse ZMODEM callbacks - same signature!)
-    xmodem_callbacks_t callbacks = {
-        .getc = zm_uart_getc,
-        .putc = zm_uart_putc,
-        .gettime = zm_get_time
-    };
-
-    xmodem_ctx_t ctx;
-    xmodem_init(&ctx, &callbacks);
-
-    // Use same buffer as ZMODEM at heap-140KB
-    uint8_t *buffer = (uint8_t *)ZM_BUFFER_ADDR;
-    uint32_t bytes_received = 0;
-
-    // Receive file
-    xmodem_error_t err = xmodem_receive(&ctx, buffer, ZM_MAX_RECEIVE, &bytes_received);
-
-    if (err == XMODEM_OK) {
-        uart_puts("\n");
-        uart_puts("=== Transfer Complete ===\n");
-        uart_puts("Received: ");
-        print_dec(bytes_received);
-        uart_puts(" bytes\n");
-        uart_puts("Buffer: 0x");
-        print_hex_word(ZM_BUFFER_ADDR);
-        uart_puts("\n");
-        uart_puts("\n");
-        uart_puts("Use 'd <addr> <len>' to view data\n");
-        uart_puts("Use 'c <src> <dst> <len>' to copy data elsewhere\n");
-    } else if (err == XMODEM_CANCEL) {
-        uart_puts("\n*** Transfer cancelled ***\n");
-    } else if (err == XMODEM_TIMEOUT) {
-        uart_puts("\n*** Transfer timeout ***\n");
-    } else if (err == XMODEM_CRC_ERROR) {
-        uart_puts("\n*** Too many CRC errors ***\n");
-    } else {
-        uart_puts("\n");
-        uart_puts("Transfer failed with error: ");
-        print_dec(-err);
-        uart_puts("\n");
-    }
-}
-
-void cmd_xmodem_send(uint32_t addr, uint32_t len) {
-    // Flush UART RX buffer FIRST (before any messages)
-    uart_flush_rx();
-
-    uart_puts("\n");
-    uart_puts("=== XMODEM-1K Send ===\n");
-    uart_puts("Sending ");
-    print_dec(len);
-    uart_puts(" bytes from 0x");
-    print_hex_word(addr);
-    uart_puts("\n");
-    uart_puts("\n");
-    uart_puts("Ready to send. Start XMODEM-1K (CRC) receive in your terminal NOW.\n");
-    uart_puts("Waiting for 'C' from receiver (60 sec timeout)...\n");
-    uart_puts("\n");
-
-    // Set up XMODEM context (reuse ZMODEM callbacks)
-    xmodem_callbacks_t callbacks = {
-        .getc = zm_uart_getc,
-        .putc = zm_uart_putc,
-        .gettime = zm_get_time
-    };
-
-    xmodem_ctx_t ctx;
-    xmodem_init(&ctx, &callbacks);
-
-    // Send file
-    uint8_t *buffer = (uint8_t *)addr;
-    xmodem_error_t err = xmodem_send(&ctx, buffer, len);
-
-    if (err == XMODEM_OK) {
-        uart_puts("\n");
-        uart_puts("=== Transfer Complete ===\n");
-        uart_puts("Sent ");
-        print_dec(len);
-        uart_puts(" bytes\n");
-    } else if (err == XMODEM_CANCEL) {
-        uart_puts("\n*** Transfer cancelled by receiver ***\n");
-    } else if (err == XMODEM_TIMEOUT) {
-        uart_puts("\n*** Transfer timeout ***\n");
-    } else if (err == XMODEM_CRC_ERROR) {
-        uart_puts("\n*** Too many CRC errors ***\n");
-    } else {
-        uart_puts("\n");
-        uart_puts("Transfer failed with error: ");
-        print_dec(-err);
-        uart_puts("\n");
-    }
-}
-
-//==============================================================================
-// Intel HEX Commands
-//==============================================================================
-
-// Intel HEX callbacks
-int ihex_uart_getc(void) {
-    return (int)uart_getc();  // Blocking read
-}
-
-void ihex_uart_putc(uint8_t c) {
-    uart_putc(c);
-}
-
-void ihex_mem_write(uint32_t addr, const uint8_t *data, uint8_t len) {
-    for (uint8_t i = 0; i < len; i++) {
-        *((volatile uint8_t *)addr++) = data[i];
-    }
-}
-
-void ihex_mem_read(uint32_t addr, uint8_t *data, uint8_t len) {
-    for (uint8_t i = 0; i < len; i++) {
-        data[i] = *((volatile uint8_t *)addr++);
-    }
-}
-
-void cmd_intelhex_receive(void) {
-    uart_puts("\n");
-    uart_puts("=== Intel HEX Receive ===\n");
-    uart_puts("Paste Intel HEX data into terminal (or send text file).\n");
-    uart_puts("Press Ctrl-C to cancel.\n");
-    uart_puts("\n");
-    uart_puts("Ready to receive Intel HEX...\n");
-    uart_puts("\n");
-
-    // Set up callbacks
-    ihex_callbacks_t callbacks = {
-        .getc = ihex_uart_getc,
-        .putc = ihex_uart_putc,
-        .write = ihex_mem_write,
-        .read = ihex_mem_read
-    };
-
-    // Receive Intel HEX
-    ihex_error_t err = ihex_receive(&callbacks);
-
-    if (err == IHEX_OK) {
-        uart_puts("\n");
-        uart_puts("=== Intel HEX Receive Complete ===\n");
-        uart_puts("Data successfully written to memory.\n");
-    } else {
-        uart_puts("\n");
-        uart_puts("*** Intel HEX Receive Failed ***\n");
-        uart_puts("Error code: ");
-        print_dec(-err);
-        uart_puts("\n");
-
-        switch (err) {
-            case IHEX_ERROR_INVALID_START:
-                uart_puts("Line doesn't start with ':'\n");
-                break;
-            case IHEX_ERROR_CHECKSUM:
-                uart_puts("Checksum mismatch\n");
-                break;
-            case IHEX_ERROR_INVALID_HEX:
-                uart_puts("Invalid hex characters\n");
-                break;
-            default:
-                break;
-        }
-    }
-}
-
-void cmd_intelhex_send(uint32_t addr, uint32_t len) {
-    uart_puts("\n");
-    uart_puts("=== Intel HEX Send ===\n");
-    uart_puts("Sending ");
-    print_dec(len);
-    uart_puts(" bytes from 0x");
-    print_hex_word(addr);
-    uart_puts("\n");
-    uart_puts("\n");
-    uart_puts("Capture this output or copy to file:\n");
-    uart_puts("========================================\n");
-
-    // Set up callbacks
-    ihex_callbacks_t callbacks = {
-        .getc = ihex_uart_getc,
-        .putc = ihex_uart_putc,
-        .write = ihex_mem_write,
-        .read = ihex_mem_read
-    };
-
-    // Send Intel HEX
-    ihex_error_t err = ihex_send(&callbacks, addr, len);
-
-    uart_puts("========================================\n");
-    if (err == IHEX_OK) {
-        uart_puts("Intel HEX output complete.\n");
-    } else {
-        uart_puts("*** Intel HEX Send Failed ***\n");
-    }
 }
 
 //==============================================================================
@@ -908,85 +529,6 @@ void execute_command(const char *cmd) {
             break;
         }
 
-        case 'z':  // ZMODEM receive
-        case 'Z': {
-            cmd_zmodem_receive();
-            break;
-        }
-
-        case 's':  // ZMODEM send
-        case 'S': {
-            uint32_t addr = parse_hex(cmd, &cmd);
-            skip_whitespace(&cmd);
-            uint32_t len = parse_hex(cmd, &cmd);
-            skip_whitespace(&cmd);
-            // Get filename (rest of the line)
-            const char *filename = cmd;
-            if (len > 0 && *filename) {
-                cmd_zmodem_send(addr, len, filename);
-            } else {
-                uart_puts("Usage: s <addr> <len> <filename>\n");
-            }
-            break;
-        }
-
-        case 'x':  // XMODEM receive
-        case 'X': {
-            // Check if this is 'xr' or 'xs'
-            if (*cmd == 'r' || *cmd == 'R') {
-                cmd_xmodem_receive();
-            } else if (*cmd == 's' || *cmd == 'S') {
-                // Parse xmodem send parameters
-                cmd++;  // Skip 's'/'S'
-                skip_whitespace(&cmd);
-                uint32_t addr = parse_hex(cmd, &cmd);
-                skip_whitespace(&cmd);
-                uint32_t len = parse_hex(cmd, &cmd);
-                if (len > 0) {
-                    cmd_xmodem_send(addr, len);
-                } else {
-                    uart_puts("Usage: xs <addr> <len>\n");
-                }
-            } else {
-                uart_puts("XMODEM commands:\n");
-                uart_puts("  xr        - XMODEM-1K receive file\n");
-                uart_puts("  xs <addr> <len> - XMODEM-1K send file\n");
-            }
-            break;
-        }
-
-        case 'i':  // Intel HEX
-        case 'I': {
-            // Check if this is 'ihr' or 'ihs'
-            if (*cmd == 'h' || *cmd == 'H') {
-                cmd++;  // Skip 'h'/'H'
-                if (*cmd == 'r' || *cmd == 'R') {
-                    cmd_intelhex_receive();
-                } else if (*cmd == 's' || *cmd == 'S') {
-                    // Parse send parameters
-                    cmd++;  // Skip 's'/'S'
-                    skip_whitespace(&cmd);
-                    uint32_t addr = parse_hex(cmd, &cmd);
-                    skip_whitespace(&cmd);
-                    uint32_t len = parse_hex(cmd, &cmd);
-                    if (len > 0) {
-                        cmd_intelhex_send(addr, len);
-                    } else {
-                        uart_puts("Usage: ihs <addr> <len>\n");
-                    }
-                } else {
-                    uart_puts("Intel HEX commands:\n");
-                    uart_puts("  ihr             - Receive Intel HEX\n");
-                    uart_puts("  ihs <addr> <len> - Send Intel HEX\n");
-                }
-            } else {
-                uart_puts("Intel HEX commands:\n");
-                uart_puts("  ihr             - Receive Intel HEX\n");
-                uart_puts("  ihs <addr> <len> - Send Intel HEX\n");
-            }
-            break;
-        }
-
         case 'u':  // Upload using bootloader protocol
         case 'U': {
             // Check if this is 'up' (upload from PC)
@@ -1037,12 +579,6 @@ void execute_command(const char *cmd) {
             uart_puts("  f <addr> <len> <val>     - Fill memory\n");
             uart_puts("  t                        - Toggle clock display on/off\n");
             uart_puts("  up [addr]                - Upload file (bootloader protocol)\n");
-            uart_puts("  z                        - ZMODEM receive file\n");
-            uart_puts("  s <addr> <len> <name>    - ZMODEM send file\n");
-            uart_puts("  xr                       - XMODEM-1K receive file\n");
-            uart_puts("  xs <addr> <len>          - XMODEM-1K send file\n");
-            uart_puts("  ihr                      - Intel HEX receive (paste text)\n");
-            uart_puts("  ihs <addr> <len>         - Intel HEX send (ASCII output)\n");
             uart_puts("  h or ?                   - This help\n");
             uart_puts("\n");
             uart_puts("Addresses and values in hex (0x optional)\n");
@@ -1090,7 +626,6 @@ void print_clock(void) {
 
 int main(void) {
     microrl_t mrl;
-    zmodem_detector_t zmodem_det;
 
     // Initialize hardware timer for 60 Hz interrupts
     timer_init();
@@ -1099,16 +634,13 @@ int main(void) {
     uart_puts("Enabling timer interrupts...\n");
     irq_enable();
 
-    // Initialize ZMODEM auto-start detection
-    zmodem_detector_init(&zmodem_det);
-
     // Initialize microRL
     microrl_init(&mrl, microrl_output, microrl_execute);
     microrl_set_prompt(&mrl, "> ");
 
     uart_puts("\n");
     uart_puts("===========================================\n");
-    uart_puts("  PicoRV32 Hex Editor with ZMODEM + microRL\n");
+    uart_puts("  PicoRV32 Hex Editor + microRL\n");
     uart_puts("===========================================\n");
     uart_puts("Type 'h' for help, 't' to toggle clock display\n");
     uart_puts("Features: Command history (UP/DOWN), line editing\n");
@@ -1127,15 +659,6 @@ int main(void) {
         }
 
         char c = uart_getc();
-
-        // Check for ZMODEM auto-start
-        if (zmodem_detector_feed(&zmodem_det, c)) {
-            uart_puts("\n\n*** ZMODEM transfer detected! ***\n");
-            cmd_zmodem_receive();
-            uart_puts("\n");
-            microrl_set_prompt(&mrl, "> ");  // Reprint prompt
-            continue;
-        }
 
         // Spacebar: page to next 256 bytes (special handling before microRL)
         if (c == ' ' && mrl.cmdlen == 0) {

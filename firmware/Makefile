@@ -33,21 +33,6 @@ TARGET ?= led_blink
 SOURCES = $(TARGET).c
 ASM_SOURCES = start.S
 
-# ZMODEM library paths
-ZMODEM_DIR = ../lib/zmodem
-ZMODEM_SRC = $(ZMODEM_DIR)/zmodem.c
-ZMODEM_OBJ = zmodem.o
-
-# XMODEM library paths
-XMODEM_DIR = ../lib/xmodem
-XMODEM_SRC = $(XMODEM_DIR)/xmodem.c
-XMODEM_OBJ = xmodem.o
-
-# Intel HEX library paths
-INTELHEX_DIR = ../lib/intelhex
-INTELHEX_SRC = $(INTELHEX_DIR)/intelhex.c
-INTELHEX_OBJ = intelhex.o
-
 # Simple Upload library paths
 SIMPLE_UPLOAD_DIR = ../lib/simple_upload
 SIMPLE_UPLOAD_SRC = $(SIMPLE_UPLOAD_DIR)/simple_upload.c
@@ -61,13 +46,9 @@ MICRORL_OBJ = microrl.o
 # Use newlib flag (set USE_NEWLIB=1 to link with newlib)
 USE_NEWLIB ?= 0
 
-# Use ZMODEM flag (auto-set for ZMODEM targets)
-USE_ZMODEM ?= 0
-
 # All firmware targets
-FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock
+FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock hexedit
 NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test
-ZMODEM_TARGETS = hexedit
 
 # Compiler flags for RV32IM
 ARCH = rv32im
@@ -76,14 +57,9 @@ CFLAGS = -march=$(ARCH) -mabi=$(ABI) -O2 -g
 CFLAGS += -Wall -Wextra
 CFLAGS += -ffreestanding -fno-builtin
 
-# Add ZMODEM include path if needed
-ifeq ($(USE_ZMODEM),1)
-    CFLAGS += -I$(ZMODEM_DIR) -I$(XMODEM_DIR) -I$(INTELHEX_DIR) -I$(SIMPLE_UPLOAD_DIR) -DZM_NO_DEBUG
-endif
-
-# Hexedit always uses microRL
+# Hexedit uses microRL and Simple Upload
 ifeq ($(TARGET),hexedit)
-    CFLAGS += -I$(MICRORL_DIR)
+    CFLAGS += -I$(MICRORL_DIR) -I$(SIMPLE_UPLOAD_DIR)
 endif
 
 # Conditional flags based on newlib usage
@@ -108,10 +84,10 @@ else
     $(info Building WITHOUT newlib (bare metal))
 endif
 
-# Add ZMODEM, XMODEM, Intel HEX, and Simple Upload objects if needed
-ifeq ($(USE_ZMODEM),1)
-    LIBS := $(ZMODEM_OBJ) $(XMODEM_OBJ) $(INTELHEX_OBJ) $(SIMPLE_UPLOAD_OBJ) $(LIBS)
-    $(info Building WITH ZMODEM, XMODEM, Intel HEX, and Simple Upload support)
+# Add Simple Upload object for hexedit
+ifeq ($(TARGET),hexedit)
+    LIBS := $(SIMPLE_UPLOAD_OBJ) $(LIBS)
+    $(info Building hexedit with Simple Upload support)
 endif
 
 # Output files
@@ -142,12 +118,12 @@ all-targets:
 	@echo "========================================="
 	@ls -lh *.bin
 
-# Build hexedit with ZMODEM
+# Build hexedit with Simple Upload and microRL
 hexedit:
 	@echo "========================================="
-	@echo "Building hexedit with ZMODEM support..."
+	@echo "Building hexedit with Simple Upload..."
 	@echo "========================================="
-	$(MAKE) TARGET=hexedit USE_ZMODEM=1 USE_NEWLIB=1 single-target
+	$(MAKE) TARGET=hexedit USE_NEWLIB=1 single-target
 	@echo "✓ hexedit built successfully"
 
 # Build newlib targets if newlib is installed
@@ -197,18 +173,6 @@ single-target: $(BIN) $(LST) size
 $(SYSCALLS_OBJ): ../lib/syscalls.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Compile ZMODEM library (needed for hexedit)
-$(ZMODEM_OBJ): $(ZMODEM_SRC)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-# Compile XMODEM library (needed for hexedit)
-$(XMODEM_OBJ): $(XMODEM_SRC)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-# Compile Intel HEX library (needed for hexedit)
-$(INTELHEX_OBJ): $(INTELHEX_SRC)
-	$(CC) $(CFLAGS) -c $< -o $@
-
 # Compile Simple Upload library (needed for hexedit)
 $(SIMPLE_UPLOAD_OBJ): $(SIMPLE_UPLOAD_SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -219,13 +183,8 @@ $(MICRORL_OBJ): $(MICRORL_SRC)
 
 # Link ELF
 $(ELF): $(SOURCES) $(ASM_SOURCES) linker.ld
-ifeq ($(USE_ZMODEM),1)
-	$(MAKE) $(ZMODEM_OBJ)
-	$(MAKE) $(XMODEM_OBJ)
-	$(MAKE) $(INTELHEX_OBJ)
-	$(MAKE) $(SIMPLE_UPLOAD_OBJ)
-endif
 ifeq ($(TARGET),hexedit)
+	$(MAKE) $(SIMPLE_UPLOAD_OBJ)
 	$(MAKE) $(MICRORL_OBJ)
 endif
 ifeq ($(USE_NEWLIB),1)
