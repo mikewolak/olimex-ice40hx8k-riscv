@@ -19,10 +19,50 @@
 #include <time.h>
 #include <curses.h>
 #include <string.h>
+#include <stdint.h>
 
 #include "tetris.h"
 #include "util.h"
 #include "timer_ms.h"
+
+//==============================================================================
+// Hardware UART Registers (Memory-mapped I/O)
+//==============================================================================
+#define UART_TX_DATA   (*(volatile uint32_t *)0x80000000)
+#define UART_TX_STATUS (*(volatile uint32_t *)0x80000004)
+#define UART_RX_DATA   (*(volatile uint32_t *)0x80000008)
+#define UART_RX_STATUS (*(volatile uint32_t *)0x8000000C)
+
+//==============================================================================
+// UART Functions (required by incurses)
+//==============================================================================
+
+void uart_putc(char c) {
+    while (UART_TX_STATUS & 1);  // Wait while TX busy
+    UART_TX_DATA = c;
+}
+
+void uart_puts(const char *s) {
+    while (*s) {
+        if (*s == '\n') uart_putc('\r');  // Auto-add CR before LF
+        uart_putc(*s++);
+    }
+}
+
+int uart_getc_available(void) {
+    return UART_RX_STATUS & 1;
+}
+
+char uart_getc(void) {
+    while (!uart_getc_available());  // Block until data available
+    return UART_RX_DATA & 0xFF;
+}
+
+void uart_flush_rx(void) {
+    while (uart_getc_available()) {
+        (void)UART_RX_DATA;  // Discard byte
+    }
+}
 
 //==============================================================================
 // IRQ Handler - routes timer interrupts to millisecond timer library
