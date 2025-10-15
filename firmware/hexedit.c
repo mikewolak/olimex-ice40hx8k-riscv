@@ -478,18 +478,26 @@ void cmd_visual(uint32_t start_addr) {
         uint32_t current_addr = top_addr + (cursor_y * 16) + cursor_x;
         uint8_t current_byte = ((uint8_t *)current_addr)[0];
         snprintf(status, sizeof(status),
-                 "Addr:0x%08X  Value:0x%02X (%u)  %s",
+                 "Addr:0x%08X Val:0x%02X(%u) Cursor:(%d,%d) Top:0x%08X %s",
                  (unsigned int)current_addr,
                  current_byte,
                  current_byte,
-                 editing ? "EDIT MODE - Type hex digits" : "");
+                 cursor_x,
+                 cursor_y,
+                 (unsigned int)top_addr,
+                 editing ? "EDIT" : "");
         addstr(status);
         for (int i = strlen(status); i < COLS; i++) addch(' ');
         standend();
 
-        // If editing, show edit value
+        // Cursor management
         if (editing) {
+            // Show cursor and position it at the edit location
+            curs_set(1);
             move(cursor_y + 2, 10 + (cursor_x * 3) + edit_nibble);
+        } else {
+            // Hide cursor when navigating
+            curs_set(0);
         }
 
         refresh();
