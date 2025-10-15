@@ -428,6 +428,57 @@ static uint32_t calculate_crc32(uint32_t start_addr, uint32_t end_addr) {
 // Visual Hex Editor (incurses-based)
 //==============================================================================
 
+// Helper: Redraw a single memory unit at given address with optional highlighting
+static void redraw_unit(uint32_t addr, uint32_t top_addr, int view_mode, int highlight) {
+    // Check if address is visible on screen
+    if (addr < top_addr || addr >= top_addr + (21 * 16)) {
+        return;  // Not on screen
+    }
+
+    uint32_t offset = addr - top_addr;
+    int row = offset / 16;
+    int bytes_per_unit = (view_mode == 0) ? 1 : (view_mode == 1) ? 2 : 4;
+    int max_cursor_x = (view_mode == 0) ? 15 : (view_mode == 1) ? 7 : 3;
+    int hex_spacing = (view_mode == 0) ? 3 : (view_mode == 1) ? 5 : 9;
+    int col = (offset % 16) / bytes_per_unit;
+
+    if (col > max_cursor_x) return;  // Not aligned for this view mode
+
+    // Draw hex value
+    move(row + 2, 10 + (col * hex_spacing));
+    if (highlight) attron(A_REVERSE);
+
+    if (view_mode == 0) {
+        uint8_t value = ((uint8_t *)addr)[0];
+        char hex_str[4];
+        snprintf(hex_str, sizeof(hex_str), "%02X ", value);
+        addstr(hex_str);
+    } else if (view_mode == 1) {
+        uint16_t value = ((uint16_t *)addr)[0];
+        char hex_str[6];
+        snprintf(hex_str, sizeof(hex_str), "%04X ", (unsigned int)value);
+        addstr(hex_str);
+    } else {
+        uint32_t value = ((uint32_t *)addr)[0];
+        char hex_str[10];
+        snprintf(hex_str, sizeof(hex_str), "%08X ", (unsigned int)value);
+        addstr(hex_str);
+    }
+
+    if (highlight) standend();
+
+    // Draw ASCII
+    int hex_width = (max_cursor_x + 1) * hex_spacing;
+    if (highlight) attron(A_REVERSE);
+    for (int i = 0; i < bytes_per_unit; i++) {
+        uint8_t byte = ((uint8_t *)(addr + i))[0];
+        char c = (byte >= 32 && byte < 127) ? byte : '.';
+        move(row + 2, 10 + hex_width + 1 + (col * bytes_per_unit) + i);
+        addch(c);
+    }
+    if (highlight) standend();
+}
+
 // Visual hex editor with curses interface
 void cmd_visual(uint32_t start_addr) {
     int cursor_x = 0;   // 0-15 (byte column) or 0-7 (word) or 0-3 (dword)
@@ -459,6 +510,9 @@ void cmd_visual(uint32_t start_addr) {
     int marking = 0;         // 0=no marks, 1=start marked, 2=both marked
     uint32_t mark_start = 0; // Start address of marked block
     uint32_t mark_end = 0;   // End address of marked block
+    int old_marking = 0;     // Previous marking state for incremental updates
+    uint32_t old_mark_start = 0;  // Previous mark start for incremental updates
+    uint32_t old_mark_end = 0;    // Previous mark end for incremental updates
 
     // Initialize curses
     initscr();
@@ -673,6 +727,54 @@ void cmd_visual(uint32_t start_addr) {
             for (int i = strlen(status); i < COLS; i++) addch(' ');
         }
         standend();
+
+        // Incremental highlight updates for shift+arrow selection (marking==1 only)
+        if (marking == 1) {
+            // Calculate current marked range
+            uint32_t range_start = (mark_start < current_addr) ? mark_start : current_addr;
+            uint32_t range_end = (mark_start < current_addr) ? current_addr : mark_start;
+
+            if (old_marking == 1) {
+                // We were marking before - do incremental update
+                // Unhighlight cells that left the range
+                uint32_t old_start = (old_mark_start < old_mark_end) ? old_mark_start : old_mark_end;
+                uint32_t old_end = (old_mark_start < old_mark_end) ? old_mark_end : old_mark_start;
+
+                // Unhighlight region that's no longer selected
+                for (uint32_t addr = old_start; addr <= old_end; addr += bytes_per_unit) {
+                    if (addr < range_start || addr > range_end) {
+                        redraw_unit(addr, top_addr, view_mode, 0);
+                    }
+                }
+
+                // Highlight region that's newly selected
+                for (uint32_t addr = range_start; addr <= range_end; addr += bytes_per_unit) {
+                    if (addr < old_start || addr > old_end) {
+                        redraw_unit(addr, top_addr, view_mode, 1);
+                    }
+                }
+            } else {
+                // First time marking - highlight entire range
+                for (uint32_t addr = range_start; addr <= range_end; addr += bytes_per_unit) {
+                    redraw_unit(addr, top_addr, view_mode, 1);
+                }
+            }
+
+            // Update old range
+            old_marking = 1;
+            old_mark_start = mark_start;
+            old_mark_end = current_addr;
+        } else if (old_marking == 1) {
+            // We were marking but stopped - unhighlight everything
+            uint32_t old_start = (old_mark_start < old_mark_end) ? old_mark_start : old_mark_end;
+            uint32_t old_end = (old_mark_start < old_mark_end) ? old_mark_end : old_mark_start;
+            for (uint32_t addr = old_start; addr <= old_end; addr += bytes_per_unit) {
+                redraw_unit(addr, top_addr, view_mode, 0);
+            }
+            old_marking = 0;
+            old_mark_start = 0;
+            old_mark_end = 0;
+        }
 
         // Cursor management
         if (goto_mode) {
