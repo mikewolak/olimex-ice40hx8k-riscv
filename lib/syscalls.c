@@ -109,6 +109,7 @@ int _read(int file, char *ptr, int len) {
 //===============================================================================
 
 int _close(int file) {
+    (void)file;
     return -1;
 }
 
@@ -117,6 +118,9 @@ int _close(int file) {
 //===============================================================================
 
 int _lseek(int file, int offset, int whence) {
+    (void)file;
+    (void)offset;
+    (void)whence;
     return 0;
 }
 
@@ -125,6 +129,7 @@ int _lseek(int file, int offset, int whence) {
 //===============================================================================
 
 int _fstat(int file, struct stat *st) {
+    (void)file;
     st->st_mode = S_IFCHR;  // Character device
     return 0;
 }
@@ -134,6 +139,7 @@ int _fstat(int file, struct stat *st) {
 //===============================================================================
 
 int _isatty(int file) {
+    (void)file;
     return 1;  // All files are "tty" (UART)
 }
 
@@ -165,6 +171,8 @@ void *_sbrk(int incr) {
 //===============================================================================
 
 int _kill(int pid, int sig) {
+    (void)pid;
+    (void)sig;
     errno = EINVAL;
     return -1;
 }
@@ -183,6 +191,7 @@ int _getpid(void) {
 //===============================================================================
 
 void _exit(int status) {
+    (void)status;
     // Infinite loop - no operating system to return to
     while (1) {
         __asm__ volatile ("wfi");  // Wait for interrupt
