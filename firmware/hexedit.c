@@ -564,7 +564,8 @@ void cmd_visual(uint32_t start_addr) {
         } else {
             // Navigation mode
             switch (ch) {
-                case 27:   // ESC - exit visual mode
+                // Temporarily disabled ESC exit to debug arrow keys
+                // case 27:   // ESC - exit visual mode
                 case 'q':
                 case 'Q':
                     endwin();
