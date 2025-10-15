@@ -94,14 +94,14 @@ char uart_getc(void) {
     return UART_RX_DATA & 0xFF;
 }
 
-char getc_timeout(uint32_t timeout_ms) {
+int getc_timeout(uint32_t timeout_ms) {
     uint32_t start = get_time_ms();
     while ((get_time_ms() - start) < timeout_ms) {
         if (uart_getc_available()) {
-            return UART_RX_DATA & 0xFF;
+            return (int)(UART_RX_DATA & 0xFF);  // Return byte as positive int
         }
     }
-    return -1;  // Timeout
+    return -1;  // Timeout - returns proper -1 as int
 }
 
 //==============================================================================
