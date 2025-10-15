@@ -38,6 +38,11 @@ ZMODEM_DIR = ../lib/zmodem
 ZMODEM_SRC = $(ZMODEM_DIR)/zmodem.c
 ZMODEM_OBJ = zmodem.o
 
+# MicroRL library paths
+MICRORL_DIR = ../lib/microrl
+MICRORL_SRC = $(MICRORL_DIR)/microrl.c
+MICRORL_OBJ = microrl.o
+
 # Use newlib flag (set USE_NEWLIB=1 to link with newlib)
 USE_NEWLIB ?= 0
 
@@ -59,6 +64,11 @@ CFLAGS += -ffreestanding -fno-builtin
 # Add ZMODEM include path if needed
 ifeq ($(USE_ZMODEM),1)
     CFLAGS += -I$(ZMODEM_DIR) -DZM_NO_DEBUG
+endif
+
+# Hexedit always uses microRL
+ifeq ($(TARGET),hexedit)
+    CFLAGS += -I$(MICRORL_DIR)
 endif
 
 # Conditional flags based on newlib usage
@@ -176,14 +186,25 @@ $(SYSCALLS_OBJ): ../lib/syscalls.c
 $(ZMODEM_OBJ): $(ZMODEM_SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Compile MicroRL library (needed for hexedit)
+$(MICRORL_OBJ): $(MICRORL_SRC)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # Link ELF
 $(ELF): $(SOURCES) $(ASM_SOURCES) linker.ld
 ifeq ($(USE_ZMODEM),1)
 	$(MAKE) $(ZMODEM_OBJ)
 endif
+ifeq ($(TARGET),hexedit)
+	$(MAKE) $(MICRORL_OBJ)
+endif
 ifeq ($(USE_NEWLIB),1)
 	$(MAKE) $(SYSCALLS_OBJ)
+ifeq ($(TARGET),hexedit)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(ASM_SOURCES) $(SOURCES) $(MICRORL_OBJ) $(LIBS) -o $@
+else
 	$(CC) $(CFLAGS) $(LDFLAGS) $(ASM_SOURCES) $(SOURCES) $(LIBS) -o $@
+endif
 else
 	$(CC) $(CFLAGS) $(LDFLAGS) $(ASM_SOURCES) $(SOURCES) $(LIBS) -o $@
 endif

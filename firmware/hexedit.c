@@ -20,7 +20,9 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 #include "../lib/zmodem/zmodem.h"
+#include "../lib/microrl/microrl.h"
 
 // Hardware addresses
 #define UART_TX_DATA   (*(volatile uint32_t *)0x80000000)
@@ -61,6 +63,7 @@
 //==============================================================================
 void timer_init(void);
 uint32_t get_time_ms(void);
+void execute_command(const char *cmd);
 
 // Global state for pagination
 static uint32_t last_dump_addr = 0;
@@ -70,31 +73,31 @@ static uint32_t last_dump_len = 0x100;  // 256 bytes
 // UART Functions
 //==============================================================================
 
-void putc(char c) {
+void uart_putc(char c) {
     while (UART_TX_STATUS & 1);  // Wait while busy
     UART_TX_DATA = c;
 }
 
-void puts(const char *s) {
+void uart_puts(const char *s) {
     while (*s) {
-        if (*s == '\n') putc('\r');
-        putc(*s++);
+        if (*s == '\n') uart_putc('\r');
+        uart_putc(*s++);
     }
 }
 
-int getc_available(void) {
+int uart_getc_available(void) {
     return UART_RX_STATUS & 1;
 }
 
-char getc(void) {
-    while (!getc_available());
+char uart_getc(void) {
+    while (!uart_getc_available());
     return UART_RX_DATA & 0xFF;
 }
 
 char getc_timeout(uint32_t timeout_ms) {
     uint32_t start = get_time_ms();
     while ((get_time_ms() - start) < timeout_ms) {
-        if (getc_available()) {
+        if (uart_getc_available()) {
             return UART_RX_DATA & 0xFF;
         }
     }
@@ -134,8 +137,8 @@ int hex_to_val(char c) {
 // Print hex byte
 void print_hex_byte(uint8_t b) {
     const char hex[] = "0123456789ABCDEF";
-    putc(hex[b >> 4]);
-    putc(hex[b & 0x0F]);
+    uart_putc(hex[b >> 4]);
+    uart_putc(hex[b & 0x0F]);
 }
 
 // Print hex word (32-bit)
@@ -152,7 +155,7 @@ void print_dec(uint32_t n) {
     int i = 0;
 
     if (n == 0) {
-        putc('0');
+        uart_putc('0');
         return;
     }
 
@@ -162,7 +165,7 @@ void print_dec(uint32_t n) {
     }
 
     while (i > 0) {
-        putc(buf[--i]);
+        uart_putc(buf[--i]);
     }
 }
 
@@ -209,7 +212,7 @@ int zm_uart_getc(uint32_t timeout_ms) {
 }
 
 void zm_uart_putc(uint8_t c) {
-    putc(c);
+    uart_putc(c);
 }
 
 uint32_t zm_get_time(void) {
@@ -226,28 +229,28 @@ void cmd_dump(uint32_t addr, uint32_t len) {
     for (uint32_t i = 0; i < len; i += 16) {
         // Print address
         print_hex_word(addr + i);
-        puts(": ");
+        uart_puts(": ");
 
         // Print hex bytes
         for (int j = 0; j < 16 && (i + j) < len; j++) {
             print_hex_byte(ptr[i + j]);
-            putc(' ');
+            uart_putc(' ');
         }
 
         // Padding for short lines
         for (int j = len - i; j < 16 && j >= 0; j++) {
-            puts("   ");
+            uart_puts("   ");
         }
 
-        puts(" |");
+        uart_puts(" |");
 
         // Print ASCII
         for (int j = 0; j < 16 && (i + j) < len; j++) {
             char c = ptr[i + j];
-            putc((c >= 32 && c < 127) ? c : '.');
+            uart_putc((c >= 32 && c < 127) ? c : '.');
         }
 
-        puts("|\n");
+        uart_puts("|\n");
     }
 
     // Save for pagination
@@ -258,46 +261,46 @@ void cmd_dump(uint32_t addr, uint32_t len) {
 void cmd_write(uint32_t addr, uint8_t value) {
     uint8_t *ptr = (uint8_t *)addr;
     *ptr = value;
-    puts("Wrote 0x");
+    uart_puts("Wrote 0x");
     print_hex_byte(value);
-    puts(" to 0x");
+    uart_puts(" to 0x");
     print_hex_word(addr);
-    puts("\n");
+    uart_puts("\n");
 }
 
 void cmd_read(uint32_t addr) {
     uint8_t *ptr = (uint8_t *)addr;
-    puts("0x");
+    uart_puts("0x");
     print_hex_word(addr);
-    puts(" = 0x");
+    uart_puts(" = 0x");
     print_hex_byte(*ptr);
-    puts("\n");
+    uart_puts("\n");
 }
 
 void cmd_copy(uint32_t src, uint32_t dst, uint32_t len) {
-    puts("Copying ");
+    uart_puts("Copying ");
     print_dec(len);
-    puts(" bytes from 0x");
+    uart_puts(" bytes from 0x");
     print_hex_word(src);
-    puts(" to 0x");
+    uart_puts(" to 0x");
     print_hex_word(dst);
-    puts("\n");
+    uart_puts("\n");
 
     // Use memmove for safe overlapping copy
     memmove((void *)dst, (void *)src, len);
 
-    puts("Done.\n");
+    uart_puts("Done.\n");
 }
 
 void cmd_fill(uint32_t addr, uint32_t len, uint8_t value) {
     memset((void *)addr, value, len);
-    puts("Filled ");
+    uart_puts("Filled ");
     print_dec(len);
-    puts(" bytes at 0x");
+    uart_puts(" bytes at 0x");
     print_hex_word(addr);
-    puts(" with 0x");
+    uart_puts(" with 0x");
     print_hex_byte(value);
-    puts("\n");
+    uart_puts("\n");
 }
 
 //==============================================================================
@@ -305,11 +308,11 @@ void cmd_fill(uint32_t addr, uint32_t len, uint8_t value) {
 //==============================================================================
 
 void cmd_zmodem_receive(void) {
-    puts("\n");
-    puts("=== ZMODEM Receive ===\n");
-    puts("Waiting for sender to start transfer...\n");
-    puts("(Send Ctrl-X five times from sender to cancel)\n");
-    puts("\n");
+    uart_puts("\n");
+    uart_puts("=== ZMODEM Receive ===\n");
+    uart_puts("Waiting for sender to start transfer...\n");
+    uart_puts("(Send Ctrl-X five times from sender to cancel)\n");
+    uart_puts("\n");
 
     // Set up ZMODEM context
     zm_callbacks_t callbacks = {
@@ -330,43 +333,43 @@ void cmd_zmodem_receive(void) {
     zm_error_t err = zm_receive_file(&ctx, buffer, ZM_MAX_RECEIVE, &bytes_received, filename);
 
     if (err == ZM_OK) {
-        puts("\n");
-        puts("=== Transfer Complete ===\n");
-        puts("Received: ");
-        puts(filename);
-        puts("\n");
-        puts("Size: ");
+        uart_puts("\n");
+        uart_puts("=== Transfer Complete ===\n");
+        uart_puts("Received: ");
+        uart_puts(filename);
+        uart_puts("\n");
+        uart_puts("Size: ");
         print_dec(bytes_received);
-        puts(" bytes\n");
-        puts("Buffer: 0x");
+        uart_puts(" bytes\n");
+        uart_puts("Buffer: 0x");
         print_hex_word(ZM_BUFFER_ADDR);
-        puts("\n");
-        puts("\n");
-        puts("Use 'c <src> <dst> <len>' to copy data elsewhere\n");
+        uart_puts("\n");
+        uart_puts("\n");
+        uart_puts("Use 'c <src> <dst> <len>' to copy data elsewhere\n");
     } else if (err == ZM_CANCEL) {
-        puts("\n*** Transfer cancelled ***\n");
+        uart_puts("\n*** Transfer cancelled ***\n");
     } else if (err == ZM_TIMEOUT) {
-        puts("\n*** Transfer timeout ***\n");
+        uart_puts("\n*** Transfer timeout ***\n");
     } else {
-        puts("\n");
-        puts("Transfer failed with error: ");
+        uart_puts("\n");
+        uart_puts("Transfer failed with error: ");
         print_dec(-err);
-        puts("\n");
+        uart_puts("\n");
     }
 }
 
 void cmd_zmodem_send(uint32_t addr, uint32_t len, const char *filename_arg) {
-    puts("\n");
-    puts("=== ZMODEM Send ===\n");
-    puts("Sending ");
+    uart_puts("\n");
+    uart_puts("=== ZMODEM Send ===\n");
+    uart_puts("Sending ");
     print_dec(len);
-    puts(" bytes from 0x");
+    uart_puts(" bytes from 0x");
     print_hex_word(addr);
-    puts("\n");
-    puts("Filename: ");
-    puts(filename_arg);
-    puts("\n");
-    puts("\n");
+    uart_puts("\n");
+    uart_puts("Filename: ");
+    uart_puts(filename_arg);
+    uart_puts("\n");
+    uart_puts("\n");
 
     // Set up ZMODEM context
     zm_callbacks_t callbacks = {
@@ -383,57 +386,66 @@ void cmd_zmodem_send(uint32_t addr, uint32_t len, const char *filename_arg) {
     zm_error_t err = zm_send_file(&ctx, buffer, len, filename_arg);
 
     if (err == ZM_OK) {
-        puts("\n");
-        puts("=== Transfer Complete ===\n");
-        puts("Sent ");
+        uart_puts("\n");
+        uart_puts("=== Transfer Complete ===\n");
+        uart_puts("Sent ");
         print_dec(len);
-        puts(" bytes\n");
+        uart_puts(" bytes\n");
     } else if (err == ZM_CANCEL) {
-        puts("\n*** Transfer cancelled by receiver ***\n");
+        uart_puts("\n*** Transfer cancelled by receiver ***\n");
     } else if (err == ZM_TIMEOUT) {
-        puts("\n*** Transfer timeout ***\n");
+        uart_puts("\n*** Transfer timeout ***\n");
     } else {
-        puts("\n");
-        puts("Transfer failed with error: ");
+        uart_puts("\n");
+        uart_puts("Transfer failed with error: ");
         print_dec(-err);
-        puts("\n");
+        uart_puts("\n");
     }
 }
 
 //==============================================================================
-// Command Parser
+// MicroRL Callbacks
 //==============================================================================
 
-typedef struct {
-    char buffer[128];
-    int pos;
-} cmd_buffer_t;
-
-void cmd_buffer_init(cmd_buffer_t *cmd) {
-    cmd->pos = 0;
-    cmd->buffer[0] = '\0';
+// Output callback for microRL - print string to UART
+int microrl_output(microrl_t *mrl, const char *str) {
+    (void)mrl;  // Unused
+    uart_puts(str);
+    return 0;
 }
 
-void cmd_buffer_add(cmd_buffer_t *cmd, char c) {
-    if (c == '\r' || c == '\n') {
-        cmd->buffer[cmd->pos] = '\0';
-    } else if (c == '\b' || c == 127) {  // Backspace
-        if (cmd->pos > 0) {
-            cmd->pos--;
-            putc('\b');
-            putc(' ');
-            putc('\b');
+// Execute callback for microRL - rebuild command line and execute
+int microrl_execute(microrl_t *mrl, int argc, const char* const *argv) {
+    (void)mrl;  // Unused
+
+    if (argc == 0) {
+        return 0;  // Empty command
+    }
+
+    // Rebuild command line from argc/argv
+    char cmdline[128];
+    int pos = 0;
+
+    for (int i = 0; i < argc && pos < 127; i++) {
+        if (i > 0) {
+            cmdline[pos++] = ' ';  // Space between arguments
         }
-    } else if (cmd->pos < 127) {
-        cmd->buffer[cmd->pos++] = c;
-        putc(c);  // Echo
+        const char *arg = argv[i];
+        while (*arg && pos < 127) {
+            cmdline[pos++] = *arg++;
+        }
     }
+    cmdline[pos] = '\0';
+
+    // Execute using existing parser
+    execute_command(cmdline);
+
+    return 0;
 }
 
-int cmd_buffer_ready(cmd_buffer_t *cmd, char c) {
-    (void)cmd;  // Unused parameter
-    return (c == '\r' || c == '\n');
-}
+//==============================================================================
+// Command Parser Utilities
+//==============================================================================
 
 // Parse hex number from string
 uint32_t parse_hex(const char *str, const char **end) {
@@ -508,7 +520,7 @@ void execute_command(const char *cmd) {
             if (len > 0) {
                 cmd_copy(src, dst, len);
             } else {
-                puts("Usage: c <src> <dst> <len>\n");
+                uart_puts("Usage: c <src> <dst> <len>\n");
             }
             break;
         }
@@ -523,7 +535,7 @@ void execute_command(const char *cmd) {
             if (len > 0) {
                 cmd_fill(addr, len, value);
             } else {
-                puts("Usage: f <addr> <len> <value>\n");
+                uart_puts("Usage: f <addr> <len> <value>\n");
             }
             break;
         }
@@ -545,7 +557,7 @@ void execute_command(const char *cmd) {
             if (len > 0 && *filename) {
                 cmd_zmodem_send(addr, len, filename);
             } else {
-                puts("Usage: s <addr> <len> <filename>\n");
+                uart_puts("Usage: s <addr> <len> <filename>\n");
             }
             break;
         }
@@ -553,29 +565,29 @@ void execute_command(const char *cmd) {
         case 'h':  // Help
         case 'H':
         case '?': {
-            puts("\n");
-            puts("Commands:\n");
-            puts("  d <addr> [len]           - Dump memory (hex+ASCII)\n");
-            puts("  SPACE                    - Page to next 256 bytes\n");
-            puts("  r <addr>                 - Read byte\n");
-            puts("  w <addr> <value>         - Write byte\n");
-            puts("  c <src> <dst> <len>      - Copy memory block\n");
-            puts("  f <addr> <len> <val>     - Fill memory\n");
-            puts("  z                        - ZMODEM receive file\n");
-            puts("  s <addr> <len> <name>    - ZMODEM send file\n");
-            puts("  h or ?                   - This help\n");
-            puts("\n");
-            puts("Addresses and values in hex (0x optional)\n");
-            puts("Default dump: 256 bytes (0x100)\n");
-            puts("ZMODEM buffer at: 0x");
+            uart_puts("\n");
+            uart_puts("Commands:\n");
+            uart_puts("  d <addr> [len]           - Dump memory (hex+ASCII)\n");
+            uart_puts("  SPACE                    - Page to next 256 bytes\n");
+            uart_puts("  r <addr>                 - Read byte\n");
+            uart_puts("  w <addr> <value>         - Write byte\n");
+            uart_puts("  c <src> <dst> <len>      - Copy memory block\n");
+            uart_puts("  f <addr> <len> <val>     - Fill memory\n");
+            uart_puts("  z                        - ZMODEM receive file\n");
+            uart_puts("  s <addr> <len> <name>    - ZMODEM send file\n");
+            uart_puts("  h or ?                   - This help\n");
+            uart_puts("\n");
+            uart_puts("Addresses and values in hex (0x optional)\n");
+            uart_puts("Default dump: 256 bytes (0x100)\n");
+            uart_puts("ZMODEM buffer at: 0x");
             print_hex_word(ZM_BUFFER_ADDR);
-            puts(" (128KB max)\n");
-            puts("\n");
+            uart_puts(" (128KB max)\n");
+            uart_puts("\n");
             break;
         }
 
         default:
-            puts("Unknown command. Type 'h' for help.\n");
+            uart_puts("Unknown command. Type 'h' for help.\n");
             break;
     }
 }
@@ -585,53 +597,51 @@ void execute_command(const char *cmd) {
 //==============================================================================
 
 int main(void) {
-    cmd_buffer_t cmd_buf;
+    microrl_t mrl;
     zmodem_detector_t zmodem_det;
 
     // Initialize hardware timer for timeouts
     timer_init();
 
-    cmd_buffer_init(&cmd_buf);
+    // Initialize ZMODEM auto-start detection
     zmodem_detector_init(&zmodem_det);
 
-    puts("\n");
-    puts("===========================================\n");
-    puts("  PicoRV32 Hex Editor with ZMODEM\n");
-    puts("===========================================\n");
-    puts("Type 'h' for help\n");
-    puts("\n");
-    puts("> ");
+    // Initialize microRL
+    microrl_init(&mrl, microrl_output, microrl_execute);
+    microrl_set_prompt(&mrl, "> ");
+
+    uart_puts("\n");
+    uart_puts("===========================================\n");
+    uart_puts("  PicoRV32 Hex Editor with ZMODEM + microRL\n");
+    uart_puts("===========================================\n");
+    uart_puts("Type 'h' for help\n");
+    uart_puts("Features: Command history (UP/DOWN), line editing\n");
+    uart_puts("\n");
 
     while (1) {
-        char c = getc();
+        char c = uart_getc();
 
         // Check for ZMODEM auto-start
         if (zmodem_detector_feed(&zmodem_det, c)) {
-            puts("\n*** ZMODEM transfer detected! ***\n");
+            uart_puts("\n\n*** ZMODEM transfer detected! ***\n");
             cmd_zmodem_receive();
-            cmd_buffer_init(&cmd_buf);
-            puts("> ");
+            uart_puts("\n");
+            microrl_set_prompt(&mrl, "> ");  // Reprint prompt
             continue;
         }
 
-        // Spacebar: page to next 256 bytes
-        if (c == ' ') {
-            puts("\n");
+        // Spacebar: page to next 256 bytes (special handling before microRL)
+        if (c == ' ' && mrl.cmdlen == 0) {
+            // Only handle spacebar if command line is empty
+            uart_puts("\n");
             uint32_t next_addr = last_dump_addr + last_dump_len;
             cmd_dump(next_addr, 0x100);
-            puts("> ");
+            microrl_set_prompt(&mrl, "> ");  // Reprint prompt
             continue;
         }
 
-        // Normal command handling
-        cmd_buffer_add(&cmd_buf, c);
-
-        if (cmd_buffer_ready(&cmd_buf, c)) {
-            puts("\n");
-            execute_command(cmd_buf.buffer);
-            cmd_buffer_init(&cmd_buf);
-            puts("> ");
-        }
+        // Feed character to microRL for processing
+        microrl_processing_input(&mrl, &c, 1);
     }
 
     return 0;
