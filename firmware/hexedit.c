@@ -42,6 +42,16 @@
 #define TIMER_CR_ONE_SHOT   (1 << 1)
 #define TIMER_SR_UIF        (1 << 0)
 
+// Clock state (updated by interrupt at 60 Hz)
+volatile uint32_t clock_frames = 0;   // Frame counter (0-59, increments at 60 Hz)
+volatile uint32_t clock_seconds = 0;  // Seconds counter (0-59)
+volatile uint32_t clock_minutes = 0;  // Minutes counter (0-59)
+volatile uint32_t clock_hours = 0;    // Hours counter (0-23)
+volatile uint8_t clock_updated = 0;   // Flag: clock changed
+
+// Millisecond counter for timeouts (updated by interrupt)
+volatile uint32_t millis = 0;         // Total milliseconds since start
+
 // Memory layout (based on linker script)
 // Physical memory: 0x00000000 - 0x0007FFFF (512KB SRAM)
 // Application:     0x00000000 - 0x0003FFFF (256KB for code/data/bss)
@@ -121,11 +131,51 @@ int getc_timeout(uint32_t timeout_ms) {
 }
 
 //==============================================================================
+// Interrupt Handler
+//==============================================================================
+
+void irq_handler(uint32_t irqs) {
+    // Check if Timer interrupt (IRQ[0])
+    if (irqs & (1 << 0)) {
+        // CRITICAL: Clear the interrupt source FIRST
+        TIMER_SR = TIMER_SR_UIF;  // Write 1 to clear
+
+        // Update millisecond counter (60 Hz = ~16.67ms per tick)
+        millis += 17;  // Approximate: 1000ms / 60Hz ≈ 16.67ms
+
+        // Update frame counter (0-59)
+        clock_frames++;
+        if (clock_frames >= 60) {
+            clock_frames = 0;
+
+            // Update seconds
+            clock_seconds++;
+            if (clock_seconds >= 60) {
+                clock_seconds = 0;
+
+                // Update minutes
+                clock_minutes++;
+                if (clock_minutes >= 60) {
+                    clock_minutes = 0;
+
+                    // Update hours
+                    clock_hours++;
+                    if (clock_hours >= 24) {
+                        clock_hours = 0;
+                    }
+                }
+            }
+        }
+
+        clock_updated = 1;  // Signal main loop
+    }
+}
+
+//==============================================================================
 // Timer Functions
 //==============================================================================
 
-// Initialize timer for millisecond timeouts (50MHz system clock)
-// Free-running counter for ZMODEM timeout detection
+// Initialize timer for 60 Hz interrupts (50MHz system clock)
 void timer_init(void) {
     // Stop timer if running
     TIMER_CR = 0x00000000;
@@ -133,19 +183,21 @@ void timer_init(void) {
     // Clear any pending interrupt
     TIMER_SR = 0x00000001;
 
-    // Configure for free-running millisecond counter
-    // 50MHz / 50000 = 1kHz = 1ms per tick
-    TIMER_PSC = 49999;        // Divide by 50000 (PSC+1)
-    TIMER_ARR = 0xFFFFFFFF;   // Free-running (wraps after ~49 days)
-    TIMER_CNT = 0;            // Reset counter to 0
+    // Configure for 60 Hz (16.67ms period)
+    // System clock: 50 MHz
+    // Prescaler: 49 (divide by 50) → 1 MHz tick rate
+    // Auto-reload: 16666 → 1,000,000 / 16,667 = 59.998 Hz ≈ 60 Hz
+    TIMER_PSC = 49;
+    TIMER_ARR = 16666;
+    TIMER_CNT = 0;
 
-    // Start timer
+    // Start timer (continuous mode, generates interrupts)
     TIMER_CR = 0x00000001;
 }
 
-// Get current time in milliseconds
+// Get current time in milliseconds (for ZMODEM timeouts)
 uint32_t get_time_ms(void) {
-    return TIMER_CNT;  // Timer counts in milliseconds
+    return millis;
 }
 
 //==============================================================================
@@ -637,6 +689,30 @@ void execute_command(const char *cmd) {
 }
 
 //==============================================================================
+// Clock Display
+//==============================================================================
+
+void print_clock(void) {
+    // Save cursor position
+    uart_puts("\033[s");
+
+    // Move to top-right (row 1, col 60)
+    uart_puts("\033[1;60H");
+
+    // Print clock: HH:MM:SS:FF
+    char buf[16];
+    snprintf(buf, sizeof(buf), "[%02u:%02u:%02u:%02u]",
+             (unsigned int)clock_hours,
+             (unsigned int)clock_minutes,
+             (unsigned int)clock_seconds,
+             (unsigned int)clock_frames);
+    uart_puts(buf);
+
+    // Restore cursor position
+    uart_puts("\033[u");
+}
+
+//==============================================================================
 // Main
 //==============================================================================
 
@@ -644,8 +720,12 @@ int main(void) {
     microrl_t mrl;
     zmodem_detector_t zmodem_det;
 
-    // Initialize hardware timer for timeouts
+    // Initialize hardware timer for 60 Hz interrupts
     timer_init();
+
+    // Enable Timer IRQ (IRQ[0])
+    uart_puts("Enabling timer interrupts...\n");
+    irq_enable();
 
     // Initialize ZMODEM auto-start detection
     zmodem_detector_init(&zmodem_det);
@@ -661,8 +741,21 @@ int main(void) {
     uart_puts("Type 'h' for help\n");
     uart_puts("Features: Command history (UP/DOWN), line editing\n");
     uart_puts("\n");
+    uart_puts("Clock display in top-right corner [HH:MM:SS:FF]\n");
+    uart_puts("\n");
 
     while (1) {
+        // Update clock display if timer interrupt fired
+        if (clock_updated) {
+            clock_updated = 0;
+            print_clock();
+        }
+
+        // Check for UART input (non-blocking)
+        if (!uart_getc_available()) {
+            continue;  // No input yet, keep checking clock
+        }
+
         char c = uart_getc();
 
         // Check for ZMODEM auto-start
