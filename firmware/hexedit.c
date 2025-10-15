@@ -505,9 +505,27 @@ void cmd_visual(uint32_t start_addr) {
 
         refresh();
 
-        // Get key
+        // Get key - handle escape sequences for arrow keys
         int ch = getch();
         last_ch = ch;  // Save for debug display
+
+        // Handle escape sequences (arrow keys send ESC [ A/B/C/D)
+        if (ch == 27) {  // ESC
+            int ch2 = getch();
+            if (ch2 == '[') {
+                int ch3 = getch();
+                // Convert escape sequence to single key code
+                switch (ch3) {
+                    case 'A': ch = 65; break;  // Up arrow
+                    case 'B': ch = 66; break;  // Down arrow
+                    case 'C': ch = 67; break;  // Right arrow
+                    case 'D': ch = 68; break;  // Left arrow
+                    default: ch = 27; break;   // Unknown, treat as ESC
+                }
+                last_ch = ch;  // Update debug display with final code
+            }
+            // If not '[', fall through with ESC
+        }
 
         if (editing) {
             // Edit mode - accept hex digits
@@ -564,8 +582,7 @@ void cmd_visual(uint32_t start_addr) {
         } else {
             // Navigation mode
             switch (ch) {
-                // Temporarily disabled ESC exit to debug arrow keys
-                // case 27:   // ESC - exit visual mode
+                case 27:   // ESC - exit visual mode
                 case 'q':
                 case 'Q':
                     endwin();
