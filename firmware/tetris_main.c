@@ -95,8 +95,9 @@ void display_board(WINDOW *w, tetris_game *obj)
   for (i = 0; i < obj->rows; i++) {
     wmove(w, 1 + i, 1);
     for (j = 0; j < obj->cols; j++) {
-      if (TC_IS_FILLED(tg_get(obj, i, j))) {
-        ADD_BLOCK(w,tg_get(obj, i, j));
+      unsigned char cell = (unsigned char)tg_get(obj, i, j);
+      if (TC_IS_FILLED(cell)) {
+        ADD_BLOCK(w, cell);
       } else {
         ADD_EMPTY(w);
       }
