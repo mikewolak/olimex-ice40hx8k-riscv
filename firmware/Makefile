@@ -53,7 +53,7 @@ USE_NEWLIB ?= 0
 
 # All firmware targets
 FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock
-NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test
+NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test tetris
 
 # Compiler flags for RV32IM
 ARCH = rv32im
@@ -65,6 +65,12 @@ CFLAGS += -ffreestanding -fno-builtin
 # Hexedit uses microRL, Simple Upload, and incurses
 ifeq ($(TARGET),hexedit)
     CFLAGS += -I$(MICRORL_DIR) -I$(SIMPLE_UPLOAD_DIR) -I$(INCURSES_DIR)
+endif
+
+# Tetris uses incurses and has multiple source files
+ifeq ($(TARGET),tetris)
+    CFLAGS += -I$(INCURSES_DIR)
+    SOURCES = tetris_main.c tetris.c util.c timer_ms.c
 endif
 
 # Conditional flags based on newlib usage
@@ -93,6 +99,12 @@ endif
 ifeq ($(TARGET),hexedit)
     LIBS := $(SIMPLE_UPLOAD_OBJ) $(INCURSES_OBJ) $(LIBS)
     $(info Building hexedit with Simple Upload and incurses support)
+endif
+
+# Add incurses object for tetris
+ifeq ($(TARGET),tetris)
+    LIBS := $(INCURSES_OBJ) $(LIBS)
+    $(info Building tetris with incurses support)
 endif
 
 # Output files
@@ -197,10 +209,15 @@ ifeq ($(TARGET),hexedit)
 	$(MAKE) $(MICRORL_OBJ)
 	$(MAKE) $(INCURSES_OBJ)
 endif
+ifeq ($(TARGET),tetris)
+	$(MAKE) $(INCURSES_OBJ)
+endif
 ifeq ($(USE_NEWLIB),1)
 	$(MAKE) $(SYSCALLS_OBJ)
 ifeq ($(TARGET),hexedit)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(ASM_SOURCES) $(SOURCES) $(MICRORL_OBJ) $(LIBS) -o $@
+else ifeq ($(TARGET),tetris)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(ASM_SOURCES) $(SOURCES) $(LIBS) -o $@
 else
 	$(CC) $(CFLAGS) $(LDFLAGS) $(ASM_SOURCES) $(SOURCES) $(LIBS) -o $@
 endif
