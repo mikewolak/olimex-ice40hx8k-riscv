@@ -38,6 +38,11 @@ ZMODEM_DIR = ../lib/zmodem
 ZMODEM_SRC = $(ZMODEM_DIR)/zmodem.c
 ZMODEM_OBJ = zmodem.o
 
+# XMODEM library paths
+XMODEM_DIR = ../lib/xmodem
+XMODEM_SRC = $(XMODEM_DIR)/xmodem.c
+XMODEM_OBJ = xmodem.o
+
 # MicroRL library paths
 MICRORL_DIR = ../lib/microrl
 MICRORL_SRC = $(MICRORL_DIR)/microrl.c
@@ -63,7 +68,7 @@ CFLAGS += -ffreestanding -fno-builtin
 
 # Add ZMODEM include path if needed
 ifeq ($(USE_ZMODEM),1)
-    CFLAGS += -I$(ZMODEM_DIR) -DZM_NO_DEBUG
+    CFLAGS += -I$(ZMODEM_DIR) -I$(XMODEM_DIR) -DZM_NO_DEBUG
 endif
 
 # Hexedit always uses microRL
@@ -93,10 +98,10 @@ else
     $(info Building WITHOUT newlib (bare metal))
 endif
 
-# Add ZMODEM object if needed
+# Add ZMODEM and XMODEM objects if needed
 ifeq ($(USE_ZMODEM),1)
-    LIBS := $(ZMODEM_OBJ) $(LIBS)
-    $(info Building WITH ZMODEM support)
+    LIBS := $(ZMODEM_OBJ) $(XMODEM_OBJ) $(LIBS)
+    $(info Building WITH ZMODEM and XMODEM support)
 endif
 
 # Output files
@@ -186,6 +191,10 @@ $(SYSCALLS_OBJ): ../lib/syscalls.c
 $(ZMODEM_OBJ): $(ZMODEM_SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Compile XMODEM library (needed for hexedit)
+$(XMODEM_OBJ): $(XMODEM_SRC)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # Compile MicroRL library (needed for hexedit)
 $(MICRORL_OBJ): $(MICRORL_SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -194,6 +203,7 @@ $(MICRORL_OBJ): $(MICRORL_SRC)
 $(ELF): $(SOURCES) $(ASM_SOURCES) linker.ld
 ifeq ($(USE_ZMODEM),1)
 	$(MAKE) $(ZMODEM_OBJ)
+	$(MAKE) $(XMODEM_OBJ)
 endif
 ifeq ($(TARGET),hexedit)
 	$(MAKE) $(MICRORL_OBJ)

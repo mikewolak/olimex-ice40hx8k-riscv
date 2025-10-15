@@ -22,6 +22,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "../lib/zmodem/zmodem.h"
+#include "../lib/xmodem/xmodem.h"
 #include "../lib/microrl/microrl.h"
 
 // Hardware addresses
@@ -514,6 +515,112 @@ void cmd_zmodem_send(uint32_t addr, uint32_t len, const char *filename_arg) {
 }
 
 //==============================================================================
+// XMODEM Commands
+//==============================================================================
+
+void cmd_xmodem_receive(void) {
+    uart_puts("\n");
+    uart_puts("=== XMODEM-1K Receive ===\n");
+    uart_puts("Ready to receive file...\n");
+    uart_puts("Start XMODEM-1K send from your terminal now.\n");
+    uart_puts("(Press Ctrl-X multiple times to cancel)\n");
+    uart_puts("\n");
+
+    // Set up XMODEM context (reuse ZMODEM callbacks - same signature!)
+    xmodem_callbacks_t callbacks = {
+        .getc = zm_uart_getc,
+        .putc = zm_uart_putc,
+        .gettime = zm_get_time
+    };
+
+    xmodem_ctx_t ctx;
+    xmodem_init(&ctx, &callbacks);
+
+    // Flush UART RX buffer before starting transfer
+    uart_flush_rx();
+
+    // Use same buffer as ZMODEM at heap-140KB
+    uint8_t *buffer = (uint8_t *)ZM_BUFFER_ADDR;
+    uint32_t bytes_received = 0;
+
+    // Receive file
+    xmodem_error_t err = xmodem_receive(&ctx, buffer, ZM_MAX_RECEIVE, &bytes_received);
+
+    if (err == XMODEM_OK) {
+        uart_puts("\n");
+        uart_puts("=== Transfer Complete ===\n");
+        uart_puts("Received: ");
+        print_dec(bytes_received);
+        uart_puts(" bytes\n");
+        uart_puts("Buffer: 0x");
+        print_hex_word(ZM_BUFFER_ADDR);
+        uart_puts("\n");
+        uart_puts("\n");
+        uart_puts("Use 'd <addr> <len>' to view data\n");
+        uart_puts("Use 'c <src> <dst> <len>' to copy data elsewhere\n");
+    } else if (err == XMODEM_CANCEL) {
+        uart_puts("\n*** Transfer cancelled ***\n");
+    } else if (err == XMODEM_TIMEOUT) {
+        uart_puts("\n*** Transfer timeout ***\n");
+    } else if (err == XMODEM_CRC_ERROR) {
+        uart_puts("\n*** Too many CRC errors ***\n");
+    } else {
+        uart_puts("\n");
+        uart_puts("Transfer failed with error: ");
+        print_dec(-err);
+        uart_puts("\n");
+    }
+}
+
+void cmd_xmodem_send(uint32_t addr, uint32_t len) {
+    uart_puts("\n");
+    uart_puts("=== XMODEM-1K Send ===\n");
+    uart_puts("Sending ");
+    print_dec(len);
+    uart_puts(" bytes from 0x");
+    print_hex_word(addr);
+    uart_puts("\n");
+    uart_puts("Start XMODEM-1K receive in your terminal now...\n");
+    uart_puts("\n");
+
+    // Set up XMODEM context (reuse ZMODEM callbacks)
+    xmodem_callbacks_t callbacks = {
+        .getc = zm_uart_getc,
+        .putc = zm_uart_putc,
+        .gettime = zm_get_time
+    };
+
+    xmodem_ctx_t ctx;
+    xmodem_init(&ctx, &callbacks);
+
+    // Flush UART RX buffer before starting transfer
+    uart_flush_rx();
+
+    // Send file
+    uint8_t *buffer = (uint8_t *)addr;
+    xmodem_error_t err = xmodem_send(&ctx, buffer, len);
+
+    if (err == XMODEM_OK) {
+        uart_puts("\n");
+        uart_puts("=== Transfer Complete ===\n");
+        uart_puts("Sent ");
+        print_dec(len);
+        uart_puts(" bytes\n");
+    } else if (err == XMODEM_CANCEL) {
+        uart_puts("\n*** Transfer cancelled by receiver ***\n");
+    } else if (err == XMODEM_TIMEOUT) {
+        uart_puts("\n*** Transfer timeout ***\n");
+    } else if (err == XMODEM_CRC_ERROR) {
+        uart_puts("\n*** Too many CRC errors ***\n");
+    } else {
+        uart_puts("\n");
+        uart_puts("Transfer failed with error: ");
+        print_dec(-err);
+        uart_puts("\n");
+    }
+}
+
+//==============================================================================
 // MicroRL Callbacks
 //==============================================================================
 
@@ -672,6 +779,31 @@ void execute_command(const char *cmd) {
             break;
         }
 
+        case 'x':  // XMODEM receive
+        case 'X': {
+            // Check if this is 'xr' or 'xs'
+            if (*cmd == 'r' || *cmd == 'R') {
+                cmd_xmodem_receive();
+            } else if (*cmd == 's' || *cmd == 'S') {
+                // Parse xmodem send parameters
+                cmd++;  // Skip 's'/'S'
+                skip_whitespace(&cmd);
+                uint32_t addr = parse_hex(cmd, &cmd);
+                skip_whitespace(&cmd);
+                uint32_t len = parse_hex(cmd, &cmd);
+                if (len > 0) {
+                    cmd_xmodem_send(addr, len);
+                } else {
+                    uart_puts("Usage: xs <addr> <len>\n");
+                }
+            } else {
+                uart_puts("XMODEM commands:\n");
+                uart_puts("  xr        - XMODEM-1K receive file\n");
+                uart_puts("  xs <addr> <len> - XMODEM-1K send file\n");
+            }
+            break;
+        }
+
         case 'h':  // Help
         case 'H':
         case '?': {
@@ -685,11 +817,13 @@ void execute_command(const char *cmd) {
             uart_puts("  f <addr> <len> <val>     - Fill memory\n");
             uart_puts("  z                        - ZMODEM receive file\n");
             uart_puts("  s <addr> <len> <name>    - ZMODEM send file\n");
+            uart_puts("  xr                       - XMODEM-1K receive file\n");
+            uart_puts("  xs <addr> <len>          - XMODEM-1K send file\n");
             uart_puts("  h or ?                   - This help\n");
             uart_puts("\n");
             uart_puts("Addresses and values in hex (0x optional)\n");
             uart_puts("Default dump: 256 bytes (0x100)\n");
-            uart_puts("ZMODEM buffer at: 0x");
+            uart_puts("Transfer buffer at: 0x");
             print_hex_word(ZM_BUFFER_ADDR);
             uart_puts(" (128KB max)\n");
             uart_puts("\n");
