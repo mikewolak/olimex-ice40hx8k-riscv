@@ -580,8 +580,12 @@ void cmd_xmodem_send(uint32_t addr, uint32_t len) {
     uart_puts(" bytes from 0x");
     print_hex_word(addr);
     uart_puts("\n");
-    uart_puts("Start XMODEM-1K receive in your terminal now...\n");
     uart_puts("\n");
+    uart_puts("Instructions:\n");
+    uart_puts("1. Start XMODEM-1K (CRC) receive in your terminal\n");
+    uart_puts("2. Device will wait for 'C' from terminal (60 sec)\n");
+    uart_puts("\n");
+    uart_puts("Waiting for receiver...\n");
 
     // Set up XMODEM context (reuse ZMODEM callbacks)
     xmodem_callbacks_t callbacks = {

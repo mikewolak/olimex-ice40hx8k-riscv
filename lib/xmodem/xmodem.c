@@ -224,11 +224,17 @@ xmodem_error_t xmodem_send(xmodem_ctx_t *ctx, const uint8_t *buffer, uint32_t si
     uint32_t offset = 0;
     uint8_t retries;
 
-    // Wait for receiver to send 'C' (CRC mode request)
+    // Wait for receiver to send 'C' (CRC mode request) or NAK (checksum mode)
+    int crc_mode = 1;  // Default to CRC mode
     for (int i = 0; i < 60; i++) {  // 60 seconds timeout
         int c = ctx->callbacks->getc(1000);
         if (c == XMODEM_CRC) {
-            break;  // Receiver ready
+            crc_mode = 1;
+            break;  // Receiver ready (CRC mode)
+        }
+        if (c == XMODEM_NAK) {
+            crc_mode = 0;
+            break;  // Receiver ready (checksum mode - but we don't support it)
         }
         if (c == XMODEM_CAN) {
             return XMODEM_CANCEL;
@@ -238,36 +244,40 @@ xmodem_error_t xmodem_send(xmodem_ctx_t *ctx, const uint8_t *buffer, uint32_t si
         }
     }
 
+    // We only support CRC mode
+    if (!crc_mode) {
+        return XMODEM_ERROR;  // Checksum mode not supported
+    }
+
     // Send all blocks
     while (offset < size) {
         retries = 0;
 
 retry_block:
         ; // Empty statement required after label in C
-        // Build packet
+        // Build packet - XMODEM-1K always uses 1024-byte blocks
         uint32_t remaining = size - offset;
-        uint32_t block_size = (remaining >= 1024) ? 1024 : remaining;
+        uint32_t copy_size = (remaining >= 1024) ? 1024 : remaining;
 
-        // Use STX for 1K blocks, SOH for smaller blocks
-        packet[0] = (block_size == 1024) ? XMODEM_STX : XMODEM_SOH;
+        // XMODEM-1K always uses STX (1024-byte blocks)
+        packet[0] = XMODEM_STX;
         packet[1] = block_num;
         packet[2] = (uint8_t)(~block_num);
 
-        // Copy data and pad if necessary
-        memcpy(&packet[3], buffer + offset, block_size);
-        if (block_size < 1024) {
-            // Pad with XMODEM_PAD (Ctrl-Z)
-            memset(&packet[3 + block_size], XMODEM_PAD, 1024 - block_size);
-            block_size = 1024;
+        // Copy data and pad to 1024 bytes if necessary
+        memcpy(&packet[3], buffer + offset, copy_size);
+        if (copy_size < 1024) {
+            // Pad remaining bytes with Ctrl-Z
+            memset(&packet[3 + copy_size], XMODEM_PAD, 1024 - copy_size);
         }
 
-        // Calculate CRC
-        uint16_t crc = crc16_ccitt(&packet[3], block_size);
-        packet[block_size + 3] = (uint8_t)(crc >> 8);    // CRC high byte
-        packet[block_size + 4] = (uint8_t)(crc & 0xFF);  // CRC low byte
+        // Calculate CRC over 1024 bytes of data
+        uint16_t crc = crc16_ccitt(&packet[3], 1024);
+        packet[1027] = (uint8_t)(crc >> 8);    // CRC high byte
+        packet[1028] = (uint8_t)(crc & 0xFF);  // CRC low byte
 
-        // Send packet
-        for (uint32_t i = 0; i < block_size + 5; i++) {
+        // Send packet: STX + block# + ~block# + 1024 data + CRC = 1029 bytes
+        for (uint32_t i = 0; i < 1029; i++) {
             ctx->callbacks->putc(packet[i]);
         }
 
