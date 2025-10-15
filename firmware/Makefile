@@ -98,8 +98,8 @@ MAP = $(TARGET).map
 
 .PHONY: all clean size disasm all-targets all-newlib-targets newlib-targets help build-newlib install-newlib
 
-# Default: build all firmware (bare-metal + newlib if available)
-all: all-targets all-newlib-targets
+# Default: build all firmware (bare-metal + newlib + ZMODEM if available)
+all: all-targets all-newlib-targets hexedit
 
 # Build all firmware targets
 all-targets:
