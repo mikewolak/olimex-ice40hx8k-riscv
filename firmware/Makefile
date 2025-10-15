@@ -17,7 +17,6 @@ else
 endif
 
 CC = $(PREFIX)gcc
-CXX = $(PREFIX)g++
 AS = $(PREFIX)as
 LD = $(PREFIX)ld
 OBJCOPY = $(PREFIX)objcopy
@@ -31,14 +30,7 @@ SYSCALLS_OBJ = syscalls.o
 
 # Target firmware (override with TARGET=name)
 TARGET ?= led_blink
-
-# Auto-detect C++ sources for specific targets
-ifeq ($(TARGET),maze3d)
-    SOURCES = $(TARGET).cpp
-else
-    SOURCES = $(TARGET).c
-endif
-
+SOURCES = $(TARGET).c
 ASM_SOURCES = start.S
 
 # ZMODEM library paths
@@ -59,7 +51,7 @@ USE_ZMODEM ?= 0
 
 # All firmware targets
 FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock
-NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test maze3d
+NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test
 ZMODEM_TARGETS = hexedit
 
 # Compiler flags for RV32IM
@@ -68,9 +60,6 @@ ABI = ilp32
 CFLAGS = -march=$(ARCH) -mabi=$(ABI) -O2 -g
 CFLAGS += -Wall -Wextra
 CFLAGS += -ffreestanding -fno-builtin
-
-# C++ specific flags (no exceptions, no RTTI, no stdlib, no math-errno)
-CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-math-errno
 
 # Add ZMODEM include path if needed
 ifeq ($(USE_ZMODEM),1)
@@ -92,7 +81,6 @@ ifeq ($(USE_NEWLIB),1)
     LDFLAGS += -L$(NEWLIB_INSTALL)/riscv64-unknown-elf/lib
     LDFLAGS += -Wl,--gc-sections
     LDFLAGS += -Wl,-Map=$(TARGET).map
-    # Add C++ library for C++ targets (using C headers, no libstdc++ needed)
     LIBS = $(SYSCALLS_OBJ) -lc -lm -lgcc
     $(info Building WITH newlib support (STATIC))
 else
@@ -214,8 +202,6 @@ ifeq ($(USE_NEWLIB),1)
 	$(MAKE) $(SYSCALLS_OBJ)
 ifeq ($(TARGET),hexedit)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(ASM_SOURCES) $(SOURCES) $(MICRORL_OBJ) $(LIBS) -o $@
-else ifeq ($(TARGET),maze3d)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(ASM_SOURCES) $(SOURCES) -nodefaultlibs $(LIBS) -o $@
 else
 	$(CC) $(CFLAGS) $(LDFLAGS) $(ASM_SOURCES) $(SOURCES) $(LIBS) -o $@
 endif
