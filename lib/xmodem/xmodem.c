@@ -65,22 +65,35 @@ xmodem_error_t xmodem_receive(xmodem_ctx_t *ctx, uint8_t *buffer, uint32_t max_s
 
     *bytes_received = 0;
 
-    // Initiate transfer by sending 'C' for CRC mode
-    for (int i = 0; i < 10; i++) {
-        flush_input(ctx);
-        ctx->callbacks->putc(XMODEM_CRC);
+    // Initiate transfer by sending 'C' for CRC mode repeatedly
+    // Keep reading and discarding like lrzsz does
+    uint32_t start_time = ctx->callbacks->gettime();
+    uint32_t last_c_time = 0;
 
-        // Wait for SOH/STX or EOT
-        int c = ctx->callbacks->getc(XMODEM_TIMEOUT_INIT / 10);
+    while ((ctx->callbacks->gettime() - start_time) < 60000) {  // 60 second timeout
+        // Send 'C' every 3 seconds
+        uint32_t now = ctx->callbacks->gettime();
+        if ((now - last_c_time) >= 3000) {
+            flush_input(ctx);
+            ctx->callbacks->putc(XMODEM_CRC);
+            last_c_time = now;
+        }
+
+        // Keep reading - discard garbage, wait for STX/SOH/EOT
+        int c = ctx->callbacks->getc(100);  // Short timeout per character
+
         if (c == XMODEM_STX || c == XMODEM_SOH) {
-            // Got start of first block, put it back by saving for next read
+            // Got start of first block!
             packet[0] = (uint8_t)c;
             goto receive_block;
         } else if (c == XMODEM_EOT) {
             // Empty file
             ctx->callbacks->putc(XMODEM_ACK);
             return XMODEM_OK;
+        } else if (c == XMODEM_CAN) {
+            return XMODEM_CANCEL;
         }
+        // Otherwise discard and keep waiting
     }
 
     // Timeout waiting for sender
@@ -224,24 +237,33 @@ xmodem_error_t xmodem_send(xmodem_ctx_t *ctx, const uint8_t *buffer, uint32_t si
     uint32_t offset = 0;
     uint8_t retries;
 
-    // Wait for receiver to send 'C' (CRC mode request) or NAK (checksum mode)
+    // Wait for receiver handshake - keep reading and discarding until we get it
+    // This is how lrzsz does it - handles garbage, echo, etc.
     int crc_mode = 1;  // Default to CRC mode
-    for (int i = 0; i < 60; i++) {  // 60 seconds timeout
-        int c = ctx->callbacks->getc(1000);
+    uint32_t start_time = ctx->callbacks->gettime();
+    int got_handshake = 0;
+
+    while ((ctx->callbacks->gettime() - start_time) < 60000) {  // 60 second total timeout
+        int c = ctx->callbacks->getc(100);  // Short timeout per character
+
         if (c == XMODEM_CRC) {
             crc_mode = 1;
+            got_handshake = 1;
             break;  // Receiver ready (CRC mode)
         }
         if (c == XMODEM_NAK) {
             crc_mode = 0;
+            got_handshake = 1;
             break;  // Receiver ready (checksum mode - but we don't support it)
         }
         if (c == XMODEM_CAN) {
             return XMODEM_CANCEL;
         }
-        if (i == 59) {
-            return XMODEM_TIMEOUT;
-        }
+        // Otherwise discard and keep waiting (handles garbage, echo, etc.)
+    }
+
+    if (!got_handshake) {
+        return XMODEM_TIMEOUT;  // Never got handshake
     }
 
     // We only support CRC mode

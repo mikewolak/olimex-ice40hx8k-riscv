@@ -217,20 +217,17 @@ zm_error_t zm_recv_header(zm_ctx_t *ctx, zm_header_t *header) {
     uint32_t start_time = ctx->callbacks.gettime();
     int c;
 
-    // Wait for ZPAD
+    // Wait for ZPAD - keep reading and discarding like lrzsz does
     while (1) {
-        c = ctx->callbacks.getc(ZM_TIMEOUT_INIT);
-        if (c < 0) {
-            ZM_DEBUG("[RX_ERR] Timeout waiting for ZPAD\n");
-            return ZM_TIMEOUT;
-        }
+        c = ctx->callbacks.getc(100);  // Short timeout per character
         if (c == ZPAD) break;
 
-        // Check timeout
+        // Check overall timeout
         if ((ctx->callbacks.gettime() - start_time) > ZM_TIMEOUT_INIT) {
             ZM_DEBUG("[RX_ERR] Init timeout\n");
             return ZM_TIMEOUT;
         }
+        // Otherwise discard and keep waiting (handles garbage, echo, etc.)
     }
 
     // Expect another ZPAD
