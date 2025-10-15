@@ -109,8 +109,8 @@
 #define CAN         0x18    // Ctrl-X (same as ZDLE)
 
 // Timeouts (milliseconds)
-#define ZM_TIMEOUT_INIT     5000    // 5 seconds for init
-#define ZM_TIMEOUT_DATA     5000    // 5 seconds for data
+#define ZM_TIMEOUT_INIT     1800000 // 30 minutes for init (manual testing)
+#define ZM_TIMEOUT_DATA     1800000 // 30 minutes for data
 #define ZM_TIMEOUT_CHAR     1000    // 1 second between characters
 
 // Buffer sizes
