@@ -94,7 +94,7 @@ MODELSIM = vsim
 
 .PHONY: all synth pnr pnr-sa pnr-sa-seeds pnr-seeds bitstream time clean help
 .PHONY: bootloader bootloader-clean
-.PHONY: firmware firmware-interactive firmware-button-demo firmware-led-blink firmware-clean
+.PHONY: firmware firmware-interactive firmware-button-demo firmware-led-blink firmware-tetris firmware-hexedit firmware-printf-test firmware-clean
 .PHONY: uploader uploader-linux uploader-clean
 .PHONY: sim sim-interactive sim-crc sim-cpu sim-r
 .PHONY: prog
@@ -281,6 +281,19 @@ firmware-button-demo:
 firmware-led-blink:
 	@echo "Building led_blink.hex..."
 	@$(MAKE) -C $(FIRMWARE_DIR) TARGET=led_blink single-target
+
+# Newlib-based firmware targets (require newlib to be installed)
+firmware-tetris:
+	@echo "Building tetris (with newlib)..."
+	@$(MAKE) -C $(FIRMWARE_DIR) TARGET=tetris USE_NEWLIB=1 single-target
+
+firmware-hexedit:
+	@echo "Building hexedit (with newlib)..."
+	@$(MAKE) -C $(FIRMWARE_DIR) TARGET=hexedit USE_NEWLIB=1 single-target
+
+firmware-printf-test:
+	@echo "Building printf_test (with newlib)..."
+	@$(MAKE) -C $(FIRMWARE_DIR) TARGET=printf_test USE_NEWLIB=1 single-target
 
 firmware-clean:
 	@$(MAKE) -C $(FIRMWARE_DIR) clean
@@ -485,14 +498,19 @@ help:
 	@echo "  bootloader       - Build software bootloader (runs from 0x40000)"
 	@echo "  bootloader-clean - Clean bootloader build"
 	@echo ""
-	@echo "Firmware Targets:"
+	@echo "Firmware Targets (Bare Metal):"
 	@echo "  firmware                  - Build all firmware (led_blink, interactive, button_demo)"
 	@echo "  firmware-led-blink        - Build led_blink.hex only"
 	@echo "  firmware-interactive      - Build interactive.hex only"
 	@echo "  firmware-button-demo      - Build button_demo.hex only"
 	@echo "  firmware-clean            - Clean firmware build"
 	@echo ""
-	@echo "Newlib Targets (C Standard Library for rv32im/ilp32):"
+	@echo "Firmware Targets (With Newlib - requires newlib-install):"
+	@echo "  firmware-tetris           - Build tetris game (38KB)"
+	@echo "  firmware-hexedit          - Build hexedit with Simple Upload"
+	@echo "  firmware-printf-test      - Build printf/scanf test program"
+	@echo ""
+	@echo "Newlib Build Targets (C Standard Library for rv32im/ilp32):"
 	@echo "  newlib-install            - Auto-fetch, configure, build, install newlib (~30-45 min)"
 	@echo "  newlib-fetch              - Clone newlib source from git (if not present)"
 	@echo "  newlib-configure          - Configure newlib for rv32im/ilp32 ONLY"
