@@ -459,8 +459,6 @@ void cmd_visual(uint32_t start_addr) {
     int marking = 0;         // 0=no marks, 1=start marked, 2=both marked
     uint32_t mark_start = 0; // Start address of marked block
     uint32_t mark_end = 0;   // End address of marked block
-    uint32_t old_highlight_start = 0;  // Previous highlight range (for incremental updates)
-    uint32_t old_highlight_end = 0;
 
     // Initialize curses
     initscr();
@@ -493,84 +491,41 @@ void cmd_visual(uint32_t start_addr) {
                 snprintf(addr_str, sizeof(addr_str), "%08X: ", (unsigned int)addr);
                 addstr(addr_str);
 
-                // Calculate marked range for highlighting (only during shift+arrow selection)
-                uint32_t highlight_start = 0, highlight_end = 0;
-                if (marking == 1) {
-                    // Live preview: highlight from mark_start to current_addr
-                    uint32_t current_addr_calc = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
-                    highlight_start = (mark_start < current_addr_calc) ? mark_start : current_addr_calc;
-                    highlight_end = (mark_start < current_addr_calc) ? current_addr_calc : mark_start;
-                }
+                // No visual highlighting - only status bar shows selection range
 
                 // Print hex data based on view mode
                 if (view_mode == 0) {
                     // Byte view: 16 bytes
                     for (int col = 0; col < 16; col++) {
-                        uint32_t byte_addr = addr + col;
-                        uint8_t byte = ((uint8_t *)(byte_addr))[0];
+                        uint8_t byte = ((uint8_t *)(addr))[col];
                         char hex_str[4];
                         snprintf(hex_str, sizeof(hex_str), "%02X ", byte);
-
-                        // Highlight if in marked range
-                        if (marking && byte_addr >= highlight_start && byte_addr <= highlight_end) {
-                            attron(A_REVERSE);
-                        }
                         addstr(hex_str);
-                        if (marking && byte_addr >= highlight_start && byte_addr <= highlight_end) {
-                            standend();
-                        }
                     }
                 } else if (view_mode == 1) {
                     // Word view: 8 words (16-bit)
                     for (int col = 0; col < 8; col++) {
-                        uint32_t word_addr = addr + (col * 2);
-                        uint16_t word = ((uint16_t *)(word_addr))[0];
+                        uint16_t word = ((uint16_t *)(addr))[col];
                         char hex_str[6];
                         snprintf(hex_str, sizeof(hex_str), "%04X ", (unsigned int)word);
-
-                        // Highlight if any byte of word is in marked range
-                        if (marking && word_addr >= highlight_start && word_addr <= highlight_end) {
-                            attron(A_REVERSE);
-                        }
                         addstr(hex_str);
-                        if (marking && word_addr >= highlight_start && word_addr <= highlight_end) {
-                            standend();
-                        }
                     }
                 } else {
                     // Dword view: 4 dwords (32-bit)
                     for (int col = 0; col < 4; col++) {
-                        uint32_t dword_addr = addr + (col * 4);
-                        uint32_t dword = ((uint32_t *)(dword_addr))[0];
+                        uint32_t dword = ((uint32_t *)(addr))[col];
                         char hex_str[10];
                         snprintf(hex_str, sizeof(hex_str), "%08X ", (unsigned int)dword);
-
-                        // Highlight if any byte of dword is in marked range
-                        if (marking && dword_addr >= highlight_start && dword_addr <= highlight_end) {
-                            attron(A_REVERSE);
-                        }
                         addstr(hex_str);
-                        if (marking && dword_addr >= highlight_start && dword_addr <= highlight_end) {
-                            standend();
-                        }
                     }
                 }
 
                 // Print ASCII
                 addstr(" ");
                 for (int col = 0; col < 16; col++) {
-                    uint32_t byte_addr = addr + col;
-                    uint8_t byte = ((uint8_t *)(byte_addr))[0];
+                    uint8_t byte = ((uint8_t *)(addr))[col];
                     char c = (byte >= 32 && byte < 127) ? byte : '.';
-
-                    // Highlight if in marked range
-                    if (marking && byte_addr >= highlight_start && byte_addr <= highlight_end) {
-                        attron(A_REVERSE);
-                    }
                     addch(c);
-                    if (marking && byte_addr >= highlight_start && byte_addr <= highlight_end) {
-                        standend();
-                    }
                 }
             }
 
@@ -1001,6 +956,15 @@ void cmd_visual(uint32_t start_addr) {
             }
         } else {
             // Navigation mode
+
+            // Clear marks on any key press when marking==2 (confirmed selection)
+            // Exception: 'm' key to start new selection is handled in its own case
+            if (marking == 2 && ch != 'm' && ch != 'M') {
+                marking = 0;
+                mark_start = 0;
+                mark_end = 0;
+            }
+
             switch (ch) {
                 case 27:   // ESC - exit visual mode
                 case 'q':
@@ -1113,16 +1077,12 @@ void cmd_visual(uint32_t start_addr) {
                     if (marking == 0) {
                         mark_start = current_addr;
                         marking = 1;
-                        old_highlight_start = mark_start;
-                        old_highlight_end = mark_start;
-                        need_full_redraw = 1;  // Redraw once when starting selection
                     } else if (marking == 2) {
-                        // Clear old marks and start new selection
-                        old_highlight_start = 0;
-                        old_highlight_end = 0;
-                        mark_start = current_addr;
-                        marking = 1;
-                        need_full_redraw = 1;  // Redraw once when starting new selection
+                        // Clear marks and exit marking mode
+                        marking = 0;
+                        mark_start = 0;
+                        mark_end = 0;
+                        break;  // Don't process the arrow key, just clear
                     }
 
                     // Move cursor based on direction
@@ -1152,15 +1112,6 @@ void cmd_visual(uint32_t start_addr) {
                             top_addr += 16;
                             need_full_redraw = 1;
                         }
-                    }
-
-                    // Update tracking for next iteration
-                    if (marking == 1) {
-                        uint32_t new_addr = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
-                        uint32_t new_highlight_start = (mark_start < new_addr) ? mark_start : new_addr;
-                        uint32_t new_highlight_end = (mark_start < new_addr) ? new_addr : mark_start;
-                        old_highlight_start = new_highlight_start;
-                        old_highlight_end = new_highlight_end;
                     }
                     break;
 
