@@ -459,6 +459,8 @@ void cmd_visual(uint32_t start_addr) {
     int marking = 0;         // 0=no marks, 1=start marked, 2=both marked
     uint32_t mark_start = 0; // Start address of marked block
     uint32_t mark_end = 0;   // End address of marked block
+    uint32_t old_highlight_start = 0;  // Previous highlight range (for incremental updates)
+    uint32_t old_highlight_end = 0;
 
     // Initialize curses
     initscr();
@@ -491,17 +493,13 @@ void cmd_visual(uint32_t start_addr) {
                 snprintf(addr_str, sizeof(addr_str), "%08X: ", (unsigned int)addr);
                 addstr(addr_str);
 
-                // Calculate marked range for highlighting
+                // Calculate marked range for highlighting (only during shift+arrow selection)
                 uint32_t highlight_start = 0, highlight_end = 0;
                 if (marking == 1) {
                     // Live preview: highlight from mark_start to current_addr
                     uint32_t current_addr_calc = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
                     highlight_start = (mark_start < current_addr_calc) ? mark_start : current_addr_calc;
                     highlight_end = (mark_start < current_addr_calc) ? current_addr_calc : mark_start;
-                } else if (marking == 2) {
-                    // Fixed marks: highlight from mark_start to mark_end
-                    highlight_start = mark_start;
-                    highlight_end = mark_end;
                 }
 
                 // Print hex data based on view mode
@@ -584,13 +582,6 @@ void cmd_visual(uint32_t start_addr) {
         // Calculate bytes per unit and hex spacing based on view mode
         bytes_per_unit = (view_mode == 0) ? 1 : (view_mode == 1) ? 2 : 4;
         int hex_spacing = (view_mode == 0) ? 3 : (view_mode == 1) ? 5 : 9;
-
-        // Force full redraw when marking is active (so highlighting updates properly)
-        if (marking != 0) {
-            need_full_redraw = 1;
-            old_cursor_x = -1;
-            old_cursor_y = -1;
-        }
 
         // Redraw old cursor position (unhighlight)
         if (old_cursor_x >= 0 && old_cursor_y >= 0) {
@@ -1115,78 +1106,61 @@ void cmd_visual(uint32_t start_addr) {
 
                 // Shift+arrow keys for text-editor-style selection
                 case 168:  // Shift+Left
-                    // Start selection if not already marking
-                    if (marking == 0) {
-                        mark_start = current_addr;
-                        marking = 1;
-                    } else if (marking == 2) {
-                        // Clear old marks and start new selection
-                        mark_start = current_addr;
-                        marking = 1;
-                    }
-                    // Move cursor left (selection auto-updates via marking==1 logic)
-                    if (cursor_x > 0) {
-                        old_cursor_x = cursor_x;
-                        old_cursor_y = cursor_y;
-                        cursor_x--;
-                    }
-                    break;
-
                 case 167:  // Shift+Right
-                    // Start selection if not already marking
-                    if (marking == 0) {
-                        mark_start = current_addr;
-                        marking = 1;
-                    } else if (marking == 2) {
-                        // Clear old marks and start new selection
-                        mark_start = current_addr;
-                        marking = 1;
-                    }
-                    // Move cursor right (selection auto-updates via marking==1 logic)
-                    if (cursor_x < max_cursor_x) {
-                        old_cursor_x = cursor_x;
-                        old_cursor_y = cursor_y;
-                        cursor_x++;
-                    }
-                    break;
-
                 case 165:  // Shift+Up
-                    // Start selection if not already marking
-                    if (marking == 0) {
-                        mark_start = current_addr;
-                        marking = 1;
-                    } else if (marking == 2) {
-                        // Clear old marks and start new selection
-                        mark_start = current_addr;
-                        marking = 1;
-                    }
-                    // Move cursor up (selection auto-updates via marking==1 logic)
-                    if (cursor_y > 0) {
-                        old_cursor_x = cursor_x;
-                        old_cursor_y = cursor_y;
-                        cursor_y--;
-                    } else if (top_addr >= 16) {
-                        top_addr -= 16;
-                    }
-                    break;
-
                 case 166:  // Shift+Down
                     // Start selection if not already marking
                     if (marking == 0) {
                         mark_start = current_addr;
                         marking = 1;
+                        old_highlight_start = mark_start;
+                        old_highlight_end = mark_start;
+                        need_full_redraw = 1;  // Redraw once when starting selection
                     } else if (marking == 2) {
                         // Clear old marks and start new selection
+                        old_highlight_start = 0;
+                        old_highlight_end = 0;
                         mark_start = current_addr;
                         marking = 1;
+                        need_full_redraw = 1;  // Redraw once when starting new selection
                     }
-                    // Move cursor down (selection auto-updates via marking==1 logic)
-                    if (cursor_y < 20) {
+
+                    // Move cursor based on direction
+                    if (ch == 168 && cursor_x > 0) {  // Shift+Left
                         old_cursor_x = cursor_x;
                         old_cursor_y = cursor_y;
-                        cursor_y++;
-                    } else {
-                        top_addr += 16;
+                        cursor_x--;
+                    } else if (ch == 167 && cursor_x < max_cursor_x) {  // Shift+Right
+                        old_cursor_x = cursor_x;
+                        old_cursor_y = cursor_y;
+                        cursor_x++;
+                    } else if (ch == 165) {  // Shift+Up
+                        if (cursor_y > 0) {
+                            old_cursor_x = cursor_x;
+                            old_cursor_y = cursor_y;
+                            cursor_y--;
+                        } else if (top_addr >= 16) {
+                            top_addr -= 16;
+                            need_full_redraw = 1;
+                        }
+                    } else if (ch == 166) {  // Shift+Down
+                        if (cursor_y < 20) {
+                            old_cursor_x = cursor_x;
+                            old_cursor_y = cursor_y;
+                            cursor_y++;
+                        } else {
+                            top_addr += 16;
+                            need_full_redraw = 1;
+                        }
+                    }
+
+                    // Update tracking for next iteration
+                    if (marking == 1) {
+                        uint32_t new_addr = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
+                        uint32_t new_highlight_start = (mark_start < new_addr) ? mark_start : new_addr;
+                        uint32_t new_highlight_end = (mark_start < new_addr) ? new_addr : mark_start;
+                        old_highlight_start = new_highlight_start;
+                        old_highlight_end = new_highlight_end;
                     }
                     break;
 
