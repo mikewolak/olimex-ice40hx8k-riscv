@@ -412,6 +412,13 @@ void cmd_visual(uint32_t start_addr) {
     int view_mode = 0;  // 0=byte, 1=word(16-bit), 2=dword(32-bit)
     int max_cursor_x = 15;  // Maximum X position (15 for byte, 7 for word, 3 for dword)
 
+    // Search state
+    int searching = 0;  // Search input mode flag
+    char search_buf[32];  // Search input buffer
+    int search_len = 0;  // Current search input length
+    uint32_t search_pattern[8];  // Parsed search pattern (up to 8 values)
+    int search_pattern_len = 0;  // Number of values in pattern
+
     // Initialize curses
     initscr();
     noecho();
@@ -428,7 +435,7 @@ void cmd_visual(uint32_t start_addr) {
             attron(A_REVERSE);
             const char *mode_str = (view_mode == 0) ? "BYTE" : (view_mode == 1) ? "WORD" : "DWORD";
             char title[81];
-            snprintf(title, sizeof(title), "Hex Editor [%s] - Arrows:move Enter:edit W:mode ESC:exit", mode_str);
+            snprintf(title, sizeof(title), "Hex Editor [%s] - Arrows:move Enter:edit W:mode /:search ESC:exit", mode_str);
             addstr(title);
             for (int i = strlen(title); i < COLS; i++) addch(' ');
             standend();
@@ -565,32 +572,44 @@ void cmd_visual(uint32_t start_addr) {
         // Show last key code for debugging
         static int last_ch = 0;
 
-        // Display value based on view mode
-        if (view_mode == 0) {
-            uint8_t value = ((uint8_t *)current_addr)[0];
-            snprintf(status, sizeof(status),
-                     "Addr:0x%08X Val:0x%02X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
-                     (unsigned int)current_addr, value, cursor_x, cursor_y,
-                     last_ch, last_ch, editing ? "EDIT" : "");
-        } else if (view_mode == 1) {
-            uint16_t value = ((uint16_t *)current_addr)[0];
-            snprintf(status, sizeof(status),
-                     "Addr:0x%08X Val:0x%04X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
-                     (unsigned int)current_addr, (unsigned int)value, cursor_x, cursor_y,
-                     last_ch, last_ch, editing ? "EDIT" : "");
+        // Display search input or normal status
+        if (searching) {
+            // Show search input prompt
+            snprintf(status, sizeof(status), "Search: %s_", search_buf);
+            addstr(status);
+            for (int i = strlen(status); i < COLS; i++) addch(' ');
         } else {
-            uint32_t value = ((uint32_t *)current_addr)[0];
-            snprintf(status, sizeof(status),
-                     "Addr:0x%08X Val:0x%08X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
-                     (unsigned int)current_addr, (unsigned int)value, cursor_x, cursor_y,
-                     last_ch, last_ch, editing ? "EDIT" : "");
+            // Display value based on view mode
+            if (view_mode == 0) {
+                uint8_t value = ((uint8_t *)current_addr)[0];
+                snprintf(status, sizeof(status),
+                         "Addr:0x%08X Val:0x%02X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
+                         (unsigned int)current_addr, value, cursor_x, cursor_y,
+                         last_ch, last_ch, editing ? "EDIT" : "");
+            } else if (view_mode == 1) {
+                uint16_t value = ((uint16_t *)current_addr)[0];
+                snprintf(status, sizeof(status),
+                         "Addr:0x%08X Val:0x%04X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
+                         (unsigned int)current_addr, (unsigned int)value, cursor_x, cursor_y,
+                         last_ch, last_ch, editing ? "EDIT" : "");
+            } else {
+                uint32_t value = ((uint32_t *)current_addr)[0];
+                snprintf(status, sizeof(status),
+                         "Addr:0x%08X Val:0x%08X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
+                         (unsigned int)current_addr, (unsigned int)value, cursor_x, cursor_y,
+                         last_ch, last_ch, editing ? "EDIT" : "");
+            }
+            addstr(status);
+            for (int i = strlen(status); i < COLS; i++) addch(' ');
         }
-        addstr(status);
-        for (int i = strlen(status); i < COLS; i++) addch(' ');
         standend();
 
         // Cursor management
-        if (editing) {
+        if (searching) {
+            // Show cursor at search input position
+            curs_set(1);
+            move(LINES - 1, 8 + search_len);  // Position after "Search: " prompt
+        } else if (editing) {
             // Show cursor and position it at the edit location
             curs_set(1);
             move(cursor_y + 2, 10 + (cursor_x * hex_spacing) + edit_nibble);
@@ -677,6 +696,110 @@ void cmd_visual(uint32_t start_addr) {
                             need_full_redraw = 1;
                         }
                     }
+                }
+            }
+        } else if (searching) {
+            // Search input mode - accept hex digits and spaces
+            if (ch == '\n' || ch == '\r') {
+                // Enter pressed - parse and execute search
+                searching = 0;
+
+                // Parse search buffer into pattern based on view mode
+                search_pattern_len = 0;
+                char *p = search_buf;
+                while (*p && search_pattern_len < 8) {
+                    // Skip spaces
+                    while (*p == ' ') p++;
+                    if (!*p) break;
+
+                    // Parse hex value
+                    uint32_t value = 0;
+                    int nibbles = 0;
+                    int max_nibbles = (view_mode == 0) ? 2 : (view_mode == 1) ? 4 : 8;
+
+                    while (*p && *p != ' ' && nibbles < max_nibbles) {
+                        int digit = -1;
+                        if (*p >= '0' && *p <= '9') {
+                            digit = *p - '0';
+                        } else if ((*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F')) {
+                            digit = ((*p & 0xDF) - 'A') + 10;
+                        }
+                        if (digit >= 0) {
+                            value = (value << 4) | digit;
+                            nibbles++;
+                        }
+                        p++;
+                    }
+
+                    if (nibbles > 0) {
+                        search_pattern[search_pattern_len++] = value;
+                    }
+                }
+
+                // Perform search from current position
+                if (search_pattern_len > 0) {
+                    uint32_t search_start = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit) + bytes_per_unit;
+                    uint32_t search_end = 0x00080000;  // End of SRAM
+
+                    for (uint32_t addr = search_start; addr < search_end; addr += bytes_per_unit) {
+                        // Check if pattern matches at this address
+                        int match = 1;
+                        for (int i = 0; i < search_pattern_len; i++) {
+                            uint32_t check_addr = addr + (i * bytes_per_unit);
+                            uint32_t mem_value = 0;
+
+                            if (view_mode == 0) {
+                                mem_value = ((uint8_t *)check_addr)[0];
+                            } else if (view_mode == 1) {
+                                mem_value = ((uint16_t *)check_addr)[0];
+                            } else {
+                                mem_value = ((uint32_t *)check_addr)[0];
+                            }
+
+                            if (mem_value != search_pattern[i]) {
+                                match = 0;
+                                break;
+                            }
+                        }
+
+                        if (match) {
+                            // Center the display on the found address
+                            uint32_t found_row = (addr & ~0xF);  // Align to 16-byte boundary
+                            // Try to center vertically (11 rows above the found position)
+                            if (found_row >= (11 * 16)) {
+                                top_addr = found_row - (11 * 16);
+                            } else {
+                                top_addr = 0;
+                            }
+
+                            // Position cursor on the found location
+                            cursor_y = ((addr - top_addr) / 16);
+                            cursor_x = ((addr - top_addr - (cursor_y * 16)) / bytes_per_unit);
+
+                            need_full_redraw = 1;
+                            old_cursor_x = -1;
+                            old_cursor_y = -1;
+                            break;
+                        }
+                    }
+                }
+            } else if (ch == 27) {  // ESC - cancel search
+                searching = 0;
+                search_len = 0;
+                search_buf[0] = '\0';
+            } else if (ch == 8 || ch == 127) {  // Backspace
+                if (search_len > 0) {
+                    search_len--;
+                    search_buf[search_len] = '\0';
+                }
+            } else if ((ch >= '0' && ch <= '9') ||
+                       (ch >= 'a' && ch <= 'f') ||
+                       (ch >= 'A' && ch <= 'F') ||
+                       ch == ' ') {
+                // Add character to search buffer
+                if (search_len < (int)(sizeof(search_buf) - 1)) {
+                    search_buf[search_len++] = ch;
+                    search_buf[search_len] = '\0';
                 }
             }
         } else {
@@ -776,6 +899,12 @@ void cmd_visual(uint32_t start_addr) {
                         cursor_x = max_cursor_x;
                     }
                     need_full_redraw = 1;
+                    break;
+
+                case '/':  // Start search
+                    searching = 1;
+                    search_len = 0;
+                    search_buf[0] = '\0';
                     break;
             }
         }
