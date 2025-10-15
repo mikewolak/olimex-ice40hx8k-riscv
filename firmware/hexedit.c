@@ -395,6 +395,36 @@ void cmd_simple_upload(uint32_t addr) {
 }
 
 //==============================================================================
+// CRC32 Helper Functions (matches simple_upload.c polynomial)
+//==============================================================================
+
+static uint32_t crc32_table[256];
+static int crc32_initialized = 0;
+
+static void crc32_init(void) {
+    if (crc32_initialized) return;
+    for (int i = 0; i < 256; i++) {
+        uint32_t crc = i;
+        for (int j = 0; j < 8; j++) {
+            crc = (crc >> 1) ^ ((crc & 1) ? 0xEDB88320 : 0);
+        }
+        crc32_table[i] = crc;
+    }
+    crc32_initialized = 1;
+}
+
+// Calculate CRC32 of a memory block
+static uint32_t calculate_crc32(uint32_t start_addr, uint32_t end_addr) {
+    crc32_init();
+    uint32_t crc = 0xFFFFFFFF;
+    for (uint32_t addr = start_addr; addr <= end_addr; addr++) {
+        uint8_t byte = *((uint8_t *)addr);
+        crc = (crc >> 8) ^ crc32_table[(crc ^ byte) & 0xFF];
+    }
+    return ~crc;
+}
+
+//==============================================================================
 // Visual Hex Editor (incurses-based)
 //==============================================================================
 
@@ -424,6 +454,11 @@ void cmd_visual(uint32_t start_addr) {
     char goto_buf[16];  // Goto address input buffer
     int goto_len = 0;   // Current goto input length
 
+    // Mark state for block operations
+    int marking = 0;         // 0=no marks, 1=start marked, 2=both marked
+    uint32_t mark_start = 0; // Start address of marked block
+    uint32_t mark_end = 0;   // End address of marked block
+
     // Initialize curses
     initscr();
     noecho();
@@ -440,7 +475,7 @@ void cmd_visual(uint32_t start_addr) {
             attron(A_REVERSE);
             const char *mode_str = (view_mode == 0) ? "BYTE" : (view_mode == 1) ? "WORD" : "DWORD";
             char title[81];
-            snprintf(title, sizeof(title), "Hex Editor [%s] - Arrows:move Enter:edit W:mode G:goto /:search ESC:exit", mode_str);
+            snprintf(title, sizeof(title), "Hex Editor [%s] - Arrows:move Enter:edit W:mode G:goto M:mark /:search ESC:exit", mode_str);
             addstr(title);
             for (int i = strlen(title); i < COLS; i++) addch(' ');
             standend();
@@ -587,6 +622,23 @@ void cmd_visual(uint32_t start_addr) {
         } else if (searching) {
             // Show search input prompt
             snprintf(status, sizeof(status), "Search: %s_", search_buf);
+            addstr(status);
+            for (int i = strlen(status); i < COLS; i++) addch(' ');
+        } else if (marking == 2) {
+            // Show mark range and CRC32
+            uint32_t range_size = mark_end - mark_start + 1;
+            uint32_t crc = calculate_crc32(mark_start, mark_end);
+            snprintf(status, sizeof(status),
+                     "MARK: 0x%08X-0x%08X (%u bytes) CRC32:0x%08X",
+                     (unsigned int)mark_start, (unsigned int)mark_end,
+                     (unsigned int)range_size, (unsigned int)crc);
+            addstr(status);
+            for (int i = strlen(status); i < COLS; i++) addch(' ');
+        } else if (marking == 1) {
+            // Show mark start only
+            snprintf(status, sizeof(status),
+                     "MARK START: 0x%08X (press M again to set end)",
+                     (unsigned int)mark_start);
             addstr(status);
             for (int i = strlen(status); i < COLS; i++) addch(' ');
         } else {
@@ -974,6 +1026,32 @@ void cmd_visual(uint32_t start_addr) {
                     searching = 1;
                     search_len = 0;
                     search_buf[0] = '\0';
+                    break;
+
+                case 'm':  // Mark/unmark for block operations
+                case 'M':
+                    if (marking == 0) {
+                        // First press: set mark start
+                        mark_start = current_addr;
+                        mark_end = current_addr;
+                        marking = 1;
+                    } else if (marking == 1) {
+                        // Second press: set mark end
+                        mark_end = current_addr;
+                        // Ensure start < end
+                        if (mark_start > mark_end) {
+                            uint32_t temp = mark_start;
+                            mark_start = mark_end;
+                            mark_end = temp;
+                        }
+                        marking = 2;
+                    } else {
+                        // Third press: clear marks
+                        marking = 0;
+                        mark_start = 0;
+                        mark_end = 0;
+                        need_full_redraw = 1;  // Clear any highlighting
+                    }
                     break;
             }
         }
