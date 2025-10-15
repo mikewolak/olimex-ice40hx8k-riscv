@@ -585,6 +585,13 @@ void cmd_visual(uint32_t start_addr) {
         bytes_per_unit = (view_mode == 0) ? 1 : (view_mode == 1) ? 2 : 4;
         int hex_spacing = (view_mode == 0) ? 3 : (view_mode == 1) ? 5 : 9;
 
+        // Force full redraw when marking is active (so highlighting updates properly)
+        if (marking != 0) {
+            need_full_redraw = 1;
+            old_cursor_x = -1;
+            old_cursor_y = -1;
+        }
+
         // Redraw old cursor position (unhighlight)
         if (old_cursor_x >= 0 && old_cursor_y >= 0) {
             uint32_t old_addr = top_addr + (old_cursor_y * 16) + (old_cursor_x * bytes_per_unit);
@@ -1116,21 +1123,12 @@ void cmd_visual(uint32_t start_addr) {
                         // Clear old marks and start new selection
                         mark_start = current_addr;
                         marking = 1;
-                        need_full_redraw = 1;
                     }
-                    // Move cursor left
+                    // Move cursor left (selection auto-updates via marking==1 logic)
                     if (cursor_x > 0) {
                         old_cursor_x = cursor_x;
                         old_cursor_y = cursor_y;
                         cursor_x--;
-                    }
-                    // Update mark end
-                    mark_end = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
-                    // Ensure start < end
-                    if (mark_start > mark_end) {
-                        uint32_t temp = mark_start;
-                        mark_start = mark_end;
-                        mark_end = temp;
                     }
                     break;
 
@@ -1143,21 +1141,12 @@ void cmd_visual(uint32_t start_addr) {
                         // Clear old marks and start new selection
                         mark_start = current_addr;
                         marking = 1;
-                        need_full_redraw = 1;
                     }
-                    // Move cursor right
+                    // Move cursor right (selection auto-updates via marking==1 logic)
                     if (cursor_x < max_cursor_x) {
                         old_cursor_x = cursor_x;
                         old_cursor_y = cursor_y;
                         cursor_x++;
-                    }
-                    // Update mark end
-                    mark_end = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
-                    // Ensure start < end
-                    if (mark_start > mark_end) {
-                        uint32_t temp = mark_start;
-                        mark_start = mark_end;
-                        mark_end = temp;
                     }
                     break;
 
@@ -1170,24 +1159,14 @@ void cmd_visual(uint32_t start_addr) {
                         // Clear old marks and start new selection
                         mark_start = current_addr;
                         marking = 1;
-                        need_full_redraw = 1;
                     }
-                    // Move cursor up
+                    // Move cursor up (selection auto-updates via marking==1 logic)
                     if (cursor_y > 0) {
                         old_cursor_x = cursor_x;
                         old_cursor_y = cursor_y;
                         cursor_y--;
                     } else if (top_addr >= 16) {
                         top_addr -= 16;
-                        need_full_redraw = 1;
-                    }
-                    // Update mark end
-                    mark_end = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
-                    // Ensure start < end
-                    if (mark_start > mark_end) {
-                        uint32_t temp = mark_start;
-                        mark_start = mark_end;
-                        mark_end = temp;
                     }
                     break;
 
@@ -1200,24 +1179,14 @@ void cmd_visual(uint32_t start_addr) {
                         // Clear old marks and start new selection
                         mark_start = current_addr;
                         marking = 1;
-                        need_full_redraw = 1;
                     }
-                    // Move cursor down
+                    // Move cursor down (selection auto-updates via marking==1 logic)
                     if (cursor_y < 20) {
                         old_cursor_x = cursor_x;
                         old_cursor_y = cursor_y;
                         cursor_y++;
                     } else {
                         top_addr += 16;
-                        need_full_redraw = 1;
-                    }
-                    // Update mark end
-                    mark_end = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
-                    // Ensure start < end
-                    if (mark_start > mark_end) {
-                        uint32_t temp = mark_start;
-                        mark_start = mark_end;
-                        mark_end = temp;
                     }
                     break;
 
