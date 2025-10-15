@@ -476,7 +476,7 @@ void cmd_visual(uint32_t start_addr) {
             attron(A_REVERSE);
             const char *mode_str = (view_mode == 0) ? "BYTE" : (view_mode == 1) ? "WORD" : "DWORD";
             char title[81];
-            snprintf(title, sizeof(title), "Hex Editor [%s] - Arrows:move Enter:edit W:mode G:goto M:mark /:search ESC:exit", mode_str);
+            snprintf(title, sizeof(title), "Hex Editor [%s] - Arrows:nav Shift+Arrows:select Enter:edit W:mode G:goto M:mark Q:exit", mode_str);
             addstr(title);
             for (int i = strlen(title); i < COLS; i++) addch(' ');
             standend();
@@ -745,17 +745,41 @@ void cmd_visual(uint32_t start_addr) {
         int ch = getch();
 
         // Handle escape sequences (arrow keys send ESC [ A/B/C/D)
+        // Shift+arrow keys send ESC [ 1 ; 2 A/B/C/D
         if (ch == 27) {  // ESC
             int ch2 = getch();
             if (ch2 == '[') {
                 int ch3 = getch();
-                // Convert escape sequence to single key code
-                switch (ch3) {
-                    case 'A': ch = 65; break;  // Up arrow
-                    case 'B': ch = 66; break;  // Down arrow
-                    case 'C': ch = 67; break;  // Right arrow
-                    case 'D': ch = 68; break;  // Left arrow
-                    default: ch = 27; break;   // Unknown, treat as ESC
+                if (ch3 == '1') {
+                    // Could be shift+arrow: ESC [ 1 ; 2 A/B/C/D
+                    int ch4 = getch();
+                    if (ch4 == ';') {
+                        int ch5 = getch();
+                        if (ch5 == '2') {
+                            int ch6 = getch();
+                            // Shift+arrow keys
+                            switch (ch6) {
+                                case 'A': ch = 165; break;  // Shift+Up
+                                case 'B': ch = 166; break;  // Shift+Down
+                                case 'C': ch = 167; break;  // Shift+Right
+                                case 'D': ch = 168; break;  // Shift+Left
+                                default: ch = 27; break;
+                            }
+                        } else {
+                            ch = 27;  // Unknown sequence
+                        }
+                    } else {
+                        ch = 27;  // Unknown sequence
+                    }
+                } else {
+                    // Regular arrow keys: ESC [ A/B/C/D
+                    switch (ch3) {
+                        case 'A': ch = 65; break;  // Up arrow
+                        case 'B': ch = 66; break;  // Down arrow
+                        case 'C': ch = 67; break;  // Right arrow
+                        case 'D': ch = 68; break;  // Left arrow
+                        default: ch = 27; break;   // Unknown, treat as ESC
+                    }
                 }
             }
             // If not '[', fall through with ESC
@@ -1080,6 +1104,121 @@ void cmd_visual(uint32_t start_addr) {
                     searching = 1;
                     search_len = 0;
                     search_buf[0] = '\0';
+                    break;
+
+                // Shift+arrow keys for text-editor-style selection
+                case 168:  // Shift+Left
+                    // Start selection if not already marking
+                    if (marking == 0) {
+                        mark_start = current_addr;
+                        marking = 1;
+                    } else if (marking == 2) {
+                        // Clear old marks and start new selection
+                        mark_start = current_addr;
+                        marking = 1;
+                        need_full_redraw = 1;
+                    }
+                    // Move cursor left
+                    if (cursor_x > 0) {
+                        old_cursor_x = cursor_x;
+                        old_cursor_y = cursor_y;
+                        cursor_x--;
+                    }
+                    // Update mark end
+                    mark_end = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
+                    // Ensure start < end
+                    if (mark_start > mark_end) {
+                        uint32_t temp = mark_start;
+                        mark_start = mark_end;
+                        mark_end = temp;
+                    }
+                    break;
+
+                case 167:  // Shift+Right
+                    // Start selection if not already marking
+                    if (marking == 0) {
+                        mark_start = current_addr;
+                        marking = 1;
+                    } else if (marking == 2) {
+                        // Clear old marks and start new selection
+                        mark_start = current_addr;
+                        marking = 1;
+                        need_full_redraw = 1;
+                    }
+                    // Move cursor right
+                    if (cursor_x < max_cursor_x) {
+                        old_cursor_x = cursor_x;
+                        old_cursor_y = cursor_y;
+                        cursor_x++;
+                    }
+                    // Update mark end
+                    mark_end = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
+                    // Ensure start < end
+                    if (mark_start > mark_end) {
+                        uint32_t temp = mark_start;
+                        mark_start = mark_end;
+                        mark_end = temp;
+                    }
+                    break;
+
+                case 165:  // Shift+Up
+                    // Start selection if not already marking
+                    if (marking == 0) {
+                        mark_start = current_addr;
+                        marking = 1;
+                    } else if (marking == 2) {
+                        // Clear old marks and start new selection
+                        mark_start = current_addr;
+                        marking = 1;
+                        need_full_redraw = 1;
+                    }
+                    // Move cursor up
+                    if (cursor_y > 0) {
+                        old_cursor_x = cursor_x;
+                        old_cursor_y = cursor_y;
+                        cursor_y--;
+                    } else if (top_addr >= 16) {
+                        top_addr -= 16;
+                        need_full_redraw = 1;
+                    }
+                    // Update mark end
+                    mark_end = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
+                    // Ensure start < end
+                    if (mark_start > mark_end) {
+                        uint32_t temp = mark_start;
+                        mark_start = mark_end;
+                        mark_end = temp;
+                    }
+                    break;
+
+                case 166:  // Shift+Down
+                    // Start selection if not already marking
+                    if (marking == 0) {
+                        mark_start = current_addr;
+                        marking = 1;
+                    } else if (marking == 2) {
+                        // Clear old marks and start new selection
+                        mark_start = current_addr;
+                        marking = 1;
+                        need_full_redraw = 1;
+                    }
+                    // Move cursor down
+                    if (cursor_y < 20) {
+                        old_cursor_x = cursor_x;
+                        old_cursor_y = cursor_y;
+                        cursor_y++;
+                    } else {
+                        top_addr += 16;
+                        need_full_redraw = 1;
+                    }
+                    // Update mark end
+                    mark_end = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
+                    // Ensure start < end
+                    if (mark_start > mark_end) {
+                        uint32_t temp = mark_start;
+                        mark_start = mark_end;
+                        mark_end = temp;
+                    }
                     break;
 
                 case 'm':  // Mark/unmark for block operations
