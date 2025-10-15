@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include "../lib/zmodem/zmodem.h"
 #include "../lib/xmodem/xmodem.h"
+#include "../lib/intelhex/intelhex.h"
 #include "../lib/microrl/microrl.h"
 
 // Hardware addresses
@@ -609,6 +610,109 @@ void cmd_xmodem_send(uint32_t addr, uint32_t len) {
 }
 
 //==============================================================================
+// Intel HEX Commands
+//==============================================================================
+
+// Intel HEX callbacks
+int ihex_uart_getc(void) {
+    return (int)uart_getc();  // Blocking read
+}
+
+void ihex_uart_putc(uint8_t c) {
+    uart_putc(c);
+}
+
+void ihex_mem_write(uint32_t addr, const uint8_t *data, uint8_t len) {
+    for (uint8_t i = 0; i < len; i++) {
+        *((volatile uint8_t *)addr++) = data[i];
+    }
+}
+
+void ihex_mem_read(uint32_t addr, uint8_t *data, uint8_t len) {
+    for (uint8_t i = 0; i < len; i++) {
+        data[i] = *((volatile uint8_t *)addr++);
+    }
+}
+
+void cmd_intelhex_receive(void) {
+    uart_puts("\n");
+    uart_puts("=== Intel HEX Receive ===\n");
+    uart_puts("Paste Intel HEX data into terminal (or send text file).\n");
+    uart_puts("Press Ctrl-C to cancel.\n");
+    uart_puts("\n");
+    uart_puts("Ready to receive Intel HEX...\n");
+    uart_puts("\n");
+
+    // Set up callbacks
+    ihex_callbacks_t callbacks = {
+        .getc = ihex_uart_getc,
+        .putc = ihex_uart_putc,
+        .write = ihex_mem_write,
+        .read = ihex_mem_read
+    };
+
+    // Receive Intel HEX
+    ihex_error_t err = ihex_receive(&callbacks);
+
+    if (err == IHEX_OK) {
+        uart_puts("\n");
+        uart_puts("=== Intel HEX Receive Complete ===\n");
+        uart_puts("Data successfully written to memory.\n");
+    } else {
+        uart_puts("\n");
+        uart_puts("*** Intel HEX Receive Failed ***\n");
+        uart_puts("Error code: ");
+        print_dec(-err);
+        uart_puts("\n");
+
+        switch (err) {
+            case IHEX_ERROR_INVALID_START:
+                uart_puts("Line doesn't start with ':'\n");
+                break;
+            case IHEX_ERROR_CHECKSUM:
+                uart_puts("Checksum mismatch\n");
+                break;
+            case IHEX_ERROR_INVALID_HEX:
+                uart_puts("Invalid hex characters\n");
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+void cmd_intelhex_send(uint32_t addr, uint32_t len) {
+    uart_puts("\n");
+    uart_puts("=== Intel HEX Send ===\n");
+    uart_puts("Sending ");
+    print_dec(len);
+    uart_puts(" bytes from 0x");
+    print_hex_word(addr);
+    uart_puts("\n");
+    uart_puts("\n");
+    uart_puts("Capture this output or copy to file:\n");
+    uart_puts("========================================\n");
+
+    // Set up callbacks
+    ihex_callbacks_t callbacks = {
+        .getc = ihex_uart_getc,
+        .putc = ihex_uart_putc,
+        .write = ihex_mem_write,
+        .read = ihex_mem_read
+    };
+
+    // Send Intel HEX
+    ihex_error_t err = ihex_send(&callbacks, addr, len);
+
+    uart_puts("========================================\n");
+    if (err == IHEX_OK) {
+        uart_puts("Intel HEX output complete.\n");
+    } else {
+        uart_puts("*** Intel HEX Send Failed ***\n");
+    }
+}
+
+//==============================================================================
 // MicroRL Callbacks
 //==============================================================================
 
@@ -792,6 +896,38 @@ void execute_command(const char *cmd) {
             break;
         }
 
+        case 'i':  // Intel HEX
+        case 'I': {
+            // Check if this is 'ihr' or 'ihs'
+            if (*cmd == 'h' || *cmd == 'H') {
+                cmd++;  // Skip 'h'/'H'
+                if (*cmd == 'r' || *cmd == 'R') {
+                    cmd_intelhex_receive();
+                } else if (*cmd == 's' || *cmd == 'S') {
+                    // Parse send parameters
+                    cmd++;  // Skip 's'/'S'
+                    skip_whitespace(&cmd);
+                    uint32_t addr = parse_hex(cmd, &cmd);
+                    skip_whitespace(&cmd);
+                    uint32_t len = parse_hex(cmd, &cmd);
+                    if (len > 0) {
+                        cmd_intelhex_send(addr, len);
+                    } else {
+                        uart_puts("Usage: ihs <addr> <len>\n");
+                    }
+                } else {
+                    uart_puts("Intel HEX commands:\n");
+                    uart_puts("  ihr             - Receive Intel HEX\n");
+                    uart_puts("  ihs <addr> <len> - Send Intel HEX\n");
+                }
+            } else {
+                uart_puts("Intel HEX commands:\n");
+                uart_puts("  ihr             - Receive Intel HEX\n");
+                uart_puts("  ihs <addr> <len> - Send Intel HEX\n");
+            }
+            break;
+        }
+
         case 'h':  // Help
         case 'H':
         case '?': {
@@ -807,6 +943,8 @@ void execute_command(const char *cmd) {
             uart_puts("  s <addr> <len> <name>    - ZMODEM send file\n");
             uart_puts("  xr                       - XMODEM-1K receive file\n");
             uart_puts("  xs <addr> <len>          - XMODEM-1K send file\n");
+            uart_puts("  ihr                      - Intel HEX receive (paste text)\n");
+            uart_puts("  ihs <addr> <len>         - Intel HEX send (ASCII output)\n");
             uart_puts("  h or ?                   - This help\n");
             uart_puts("\n");
             uart_puts("Addresses and values in hex (0x optional)\n");
