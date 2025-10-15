@@ -419,6 +419,11 @@ void cmd_visual(uint32_t start_addr) {
     uint32_t search_pattern[8];  // Parsed search pattern (up to 8 values)
     int search_pattern_len = 0;  // Number of values in pattern
 
+    // Goto state
+    int goto_mode = 0;  // Goto input mode flag
+    char goto_buf[16];  // Goto address input buffer
+    int goto_len = 0;   // Current goto input length
+
     // Initialize curses
     initscr();
     noecho();
@@ -435,7 +440,7 @@ void cmd_visual(uint32_t start_addr) {
             attron(A_REVERSE);
             const char *mode_str = (view_mode == 0) ? "BYTE" : (view_mode == 1) ? "WORD" : "DWORD";
             char title[81];
-            snprintf(title, sizeof(title), "Hex Editor [%s] - Arrows:move Enter:edit W:mode /:search ESC:exit", mode_str);
+            snprintf(title, sizeof(title), "Hex Editor [%s] - Arrows:move Enter:edit W:mode G:goto /:search ESC:exit", mode_str);
             addstr(title);
             for (int i = strlen(title); i < COLS; i++) addch(' ');
             standend();
@@ -573,8 +578,13 @@ void cmd_visual(uint32_t start_addr) {
         char status[COLS + 1];
         uint32_t current_addr = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
 
-        // Display search input or normal status
-        if (searching) {
+        // Display goto/search input or normal status
+        if (goto_mode) {
+            // Show goto input prompt
+            snprintf(status, sizeof(status), "Goto: %s_", goto_buf);
+            addstr(status);
+            for (int i = strlen(status); i < COLS; i++) addch(' ');
+        } else if (searching) {
             // Show search input prompt
             snprintf(status, sizeof(status), "Search: %s_", search_buf);
             addstr(status);
@@ -606,7 +616,11 @@ void cmd_visual(uint32_t start_addr) {
         standend();
 
         // Cursor management
-        if (searching) {
+        if (goto_mode) {
+            // Show cursor at goto input position
+            curs_set(1);
+            move(LINES - 1, 6 + goto_len);  // Position after "Goto: " prompt
+        } else if (searching) {
             // Show cursor at search input position
             curs_set(1);
             move(LINES - 1, 8 + search_len);  // Position after "Search: " prompt
@@ -695,6 +709,62 @@ void cmd_visual(uint32_t start_addr) {
                             need_full_redraw = 1;
                         }
                     }
+                }
+            }
+        } else if (goto_mode) {
+            // Goto input mode - accept hex digits for address
+            if (ch == '\n' || ch == '\r') {
+                // Enter pressed - parse and execute goto
+                goto_mode = 0;
+
+                // Parse goto buffer as hex address
+                uint32_t goto_addr = 0;
+                char *p = goto_buf;
+                while (*p) {
+                    int digit = -1;
+                    if (*p >= '0' && *p <= '9') {
+                        digit = *p - '0';
+                    } else if ((*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F')) {
+                        digit = ((*p & 0xDF) - 'A') + 10;
+                    }
+                    if (digit >= 0) {
+                        goto_addr = (goto_addr << 4) | digit;
+                    }
+                    p++;
+                }
+
+                // Center the display on the goto address
+                uint32_t goto_row = (goto_addr & ~0xF);  // Align to 16-byte boundary
+                // Try to center vertically (10 rows above puts result in middle)
+                if (goto_row >= (10 * 16)) {
+                    top_addr = goto_row - (10 * 16);
+                } else {
+                    top_addr = 0;
+                }
+
+                // Position cursor on the goto location
+                cursor_y = ((goto_addr - top_addr) / 16);
+                cursor_x = ((goto_addr - top_addr - (cursor_y * 16)) / bytes_per_unit);
+
+                need_full_redraw = 1;
+                old_cursor_x = -1;
+                old_cursor_y = -1;
+            } else if (ch == 27) {  // ESC - cancel goto
+                goto_mode = 0;
+                goto_len = 0;
+                goto_buf[0] = '\0';
+            } else if (ch == 8 || ch == 127) {  // Backspace
+                if (goto_len > 0) {
+                    goto_len--;
+                    goto_buf[goto_len] = '\0';
+                }
+            } else if ((ch >= '0' && ch <= '9') ||
+                       (ch >= 'a' && ch <= 'f') ||
+                       (ch >= 'A' && ch <= 'F')) {
+                // Add hex digit to goto buffer
+                if (goto_len < (int)(sizeof(goto_buf) - 1)) {
+                    goto_buf[goto_len++] = ch;
+                    goto_buf[goto_len] = '\0';
                 }
             }
         } else if (searching) {
@@ -875,11 +945,11 @@ void cmd_visual(uint32_t start_addr) {
                     need_full_redraw = 1;
                     break;
 
-                case 'g':  // Go to address (simple version - go to start)
-                    top_addr = 0;
-                    cursor_x = 0;
-                    cursor_y = 0;
-                    need_full_redraw = 1;
+                case 'g':  // Go to address with input
+                case 'G':
+                    goto_mode = 1;
+                    goto_len = 0;
+                    goto_buf[0] = '\0';
                     break;
 
                 case 'w':  // Cycle view mode (byte -> word -> dword)
