@@ -141,7 +141,8 @@ receive_block:
         uint8_t block_num = packet[1];
         uint8_t block_num_inv = packet[2];
 
-        if (block_num != (uint8_t)(~block_num_inv)) {
+        // Block number and its complement should sum to 0xFF
+        if ((uint8_t)(block_num + block_num_inv) != 0xFF) {
             // Block number mismatch
             ctx->callbacks->putc(XMODEM_NAK);
             retries++;
