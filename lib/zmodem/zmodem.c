@@ -6,9 +6,16 @@
 //===============================================================================
 
 #include "zmodem.h"
-#include <stdio.h>
 #include <string.h>
-#include <unistd.h>
+#include <stdio.h>  // Needed for snprintf in protocol code
+
+// Debug output (disable for bare-metal embedded systems)
+#ifndef ZM_NO_DEBUG
+    #include <unistd.h>
+    #define ZM_DEBUG(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
+#else
+    #define ZM_DEBUG(fmt, ...) ((void)0)
+#endif
 
 //==============================================================================
 // CRC-16 Implementation (CCITT polynomial 0x1021, used for headers)
@@ -88,11 +95,11 @@ static int zm_needs_escape(uint8_t c) {
 // Send byte with ZDLE escaping if needed
 static void zm_send_escaped(zm_ctx_t *ctx, uint8_t c) {
     if (zm_needs_escape(c)) {
-        fprintf(stderr, "[ESC_SEND] %02X (escaped)\n", c);
+        ZM_DEBUG("[ESC_SEND] %02X (escaped)\n", c);
         ctx->callbacks.putc(ZDLE);
         c ^= 0x40;
     } else {
-        fprintf(stderr, "[ESC_SEND] %02X (raw)\n", c);
+        ZM_DEBUG("[ESC_SEND] %02X (raw)\n", c);
     }
     ctx->callbacks.putc(c);
 }
@@ -100,12 +107,12 @@ static void zm_send_escaped(zm_ctx_t *ctx, uint8_t c) {
 // Receive byte with ZDLE de-escaping
 static int zm_recv_escaped(zm_ctx_t *ctx, uint32_t timeout_ms) {
     int c = ctx->callbacks.getc(timeout_ms);
-    fprintf(stderr, "[ESC_RECV] Got %02X\n", c & 0xFF);
+    ZM_DEBUG("[ESC_RECV] Got %02X\n", c & 0xFF);
     if (c < 0) return c;  // Timeout
 
     if (c == ZDLE) {
         c = ctx->callbacks.getc(timeout_ms);
-        fprintf(stderr, "[ESC_RECV] After ZDLE: %02X\n", c & 0xFF);
+        ZM_DEBUG("[ESC_RECV] After ZDLE: %02X\n", c & 0xFF);
         if (c < 0) return c;
 
         // Handle special sequences
@@ -168,7 +175,7 @@ static int zm_recv_hex_byte(zm_ctx_t *ctx, uint32_t timeout_ms) {
 //==============================================================================
 
 zm_error_t zm_send_header(zm_ctx_t *ctx, uint8_t type, uint32_t arg) {
-    fprintf(stderr, "[TX] type=%02X arg=%08X\n", type, arg);
+    ZM_DEBUG("[TX] type=%02X arg=%08X\n", type, arg);
     // Send ZPAD * 2 + ZDLE + header type indicator (ZHEX for simplicity)
     ctx->callbacks.putc(ZPAD);
     ctx->callbacks.putc(ZPAD);
@@ -214,14 +221,14 @@ zm_error_t zm_recv_header(zm_ctx_t *ctx, zm_header_t *header) {
     while (1) {
         c = ctx->callbacks.getc(ZM_TIMEOUT_INIT);
         if (c < 0) {
-            fprintf(stderr, "[RX_ERR] Timeout waiting for ZPAD\n");
+            ZM_DEBUG("[RX_ERR] Timeout waiting for ZPAD\n");
             return ZM_TIMEOUT;
         }
         if (c == ZPAD) break;
 
         // Check timeout
         if ((ctx->callbacks.gettime() - start_time) > ZM_TIMEOUT_INIT) {
-            fprintf(stderr, "[RX_ERR] Init timeout\n");
+            ZM_DEBUG("[RX_ERR] Init timeout\n");
             return ZM_TIMEOUT;
         }
     }
@@ -229,24 +236,24 @@ zm_error_t zm_recv_header(zm_ctx_t *ctx, zm_header_t *header) {
     // Expect another ZPAD
     c = ctx->callbacks.getc(ZM_TIMEOUT_CHAR);
     if (c != ZPAD) {
-        fprintf(stderr, "[RX_ERR] Expected 2nd ZPAD, got %02X\n", c);
+        ZM_DEBUG("[RX_ERR] Expected 2nd ZPAD, got %02X\n", c);
         return ZM_PROTOCOL_ERROR;
     }
 
     // Expect ZDLE
     c = ctx->callbacks.getc(ZM_TIMEOUT_CHAR);
     if (c != ZDLE) {
-        fprintf(stderr, "[RX_ERR] Expected ZDLE, got %02X\n", c);
+        ZM_DEBUG("[RX_ERR] Expected ZDLE, got %02X\n", c);
         return ZM_PROTOCOL_ERROR;
     }
 
     // Get header format (ZHEX, ZBIN, or ZBIN32)
     c = ctx->callbacks.getc(ZM_TIMEOUT_CHAR);
     if (c < 0) {
-        fprintf(stderr, "[RX_ERR] Timeout reading format\n");
+        ZM_DEBUG("[RX_ERR] Timeout reading format\n");
         return ZM_TIMEOUT;
     }
-    fprintf(stderr, "[RX_DEBUG] Format byte: %02X\n", c);
+    ZM_DEBUG("[RX_DEBUG] Format byte: %02X\n", c);
     if (c == ZHEX) {
         // Hex header - receive type + 4 bytes + 2 byte CRC
         int type = zm_recv_hex_byte(ctx, ZM_TIMEOUT_CHAR);
@@ -285,11 +292,11 @@ zm_error_t zm_recv_header(zm_ctx_t *ctx, zm_header_t *header) {
             int xon = ctx->callbacks.getc(ZM_TIMEOUT_CHAR);
             if (xon != XON) {
                 // Hmm, wasn't XON - this might be a problem, but continue
-                fprintf(stderr, "[RX_WARN] Expected XON, got %02X\n", xon);
+                ZM_DEBUG("[RX_WARN] Expected XON, got %02X\n", xon);
             }
         }
 
-        fprintf(stderr, "[RX] type=%02X arg=%08X\n", header->type, header->arg);
+        ZM_DEBUG("[RX] type=%02X arg=%08X\n", header->type, header->arg);
         return ZM_OK;
     }
 
@@ -302,14 +309,14 @@ zm_error_t zm_recv_header(zm_ctx_t *ctx, zm_header_t *header) {
 
 zm_error_t zm_send_data(zm_ctx_t *ctx, const uint8_t *data, uint16_t len,
                         uint8_t frame_end) {
-    fprintf(stderr, "[SEND_DATA] len=%d frame_end=%02X\n", len, frame_end);
+    ZM_DEBUG("[SEND_DATA] len=%d frame_end=%02X\n", len, frame_end);
     // Send data with ZDLE escaping
     for (uint16_t i = 0; i < len; i++) {
         zm_send_escaped(ctx, data[i]);
     }
 
     // Send frame end type
-    fprintf(stderr, "[TX_FRAME_END] Sending ZDLE + %02X\n", frame_end);
+    ZM_DEBUG("[TX_FRAME_END] Sending ZDLE + %02X\n", frame_end);
     ctx->callbacks.putc(ZDLE);
     ctx->callbacks.putc(frame_end);
 
@@ -323,7 +330,7 @@ zm_error_t zm_send_data(zm_ctx_t *ctx, const uint8_t *data, uint16_t len,
     // Include frame_end in CRC
     crc = (crc << 8) ^ crc16_table[((crc >> 8) ^ frame_end) & 0xFF];
 
-    fprintf(stderr, "[TX_CRC] Calculated CRC=%04X for %d bytes + frame_end %02X\n", crc, len, frame_end);
+    ZM_DEBUG("[TX_CRC] Calculated CRC=%04X for %d bytes + frame_end %02X\n", crc, len, frame_end);
     zm_send_escaped(ctx, (crc >> 8) & 0xFF);
     zm_send_escaped(ctx, crc & 0xFF);
 
@@ -334,18 +341,18 @@ zm_error_t zm_recv_data(zm_ctx_t *ctx, uint8_t *buffer, uint16_t *len, uint8_t *
     uint16_t count = 0;
     uint8_t frame_end_byte = 0;
 
-    fprintf(stderr, "[RECV_DATA] Starting...\n");
+    ZM_DEBUG("[RECV_DATA] Starting...\n");
     while (count < ZM_MAX_BLOCK) {
         int c = zm_recv_escaped(ctx, ZM_TIMEOUT_DATA);
         if (c < 0) {
-            fprintf(stderr, "[RECV_DATA] zm_recv_escaped returned %d\n", c);
+            ZM_DEBUG("[RECV_DATA] zm_recv_escaped returned %d\n", c);
             return (c == ZM_CANCEL) ? ZM_CANCEL : ZM_TIMEOUT;
         }
 
         // Check for frame end (control codes have 0x100 bit set)
         if (c & 0x100) {
             frame_end_byte = c & 0xFF;
-            fprintf(stderr, "[RECV_DATA] Got frame_end control code: %02X\n", frame_end_byte);
+            ZM_DEBUG("[RECV_DATA] Got frame_end control code: %02X\n", frame_end_byte);
             break;
         }
 
@@ -358,9 +365,9 @@ zm_error_t zm_recv_data(zm_ctx_t *ctx, uint8_t *buffer, uint16_t *len, uint8_t *
         if (c < 0) return ZM_TIMEOUT;
         if (c & 0x100) {
             frame_end_byte = c & 0xFF;
-            fprintf(stderr, "[RECV_DATA] Got frame_end after max block: %02X\n", frame_end_byte);
+            ZM_DEBUG("[RECV_DATA] Got frame_end after max block: %02X\n", frame_end_byte);
         } else {
-            fprintf(stderr, "[RECV_DATA_ERR] Expected frame_end, got data: %02X\n", c);
+            ZM_DEBUG("[RECV_DATA_ERR] Expected frame_end, got data: %02X\n", c);
             return ZM_PROTOCOL_ERROR;
         }
     }
@@ -373,9 +380,9 @@ zm_error_t zm_recv_data(zm_ctx_t *ctx, uint8_t *buffer, uint16_t *len, uint8_t *
     uint16_t rx_crc = (crc_high << 8) | crc_low;
 
     // Verify CRC-16 (data + frame_end)
-    fprintf(stderr, "[CRC_CHECK] count=%d frame_end=%02X\n", count, frame_end_byte);
+    ZM_DEBUG("[CRC_CHECK] count=%d frame_end=%02X\n", count, frame_end_byte);
     for (uint16_t i = 0; i < count && i < 20; i++) {
-        fprintf(stderr, "  [%d]=%02X\n", i, buffer[i]);
+        ZM_DEBUG("  [%d]=%02X\n", i, buffer[i]);
     }
 
     zm_crc16_init();
@@ -387,7 +394,7 @@ zm_error_t zm_recv_data(zm_ctx_t *ctx, uint8_t *buffer, uint16_t *len, uint8_t *
     calc_crc = (calc_crc << 8) ^ crc16_table[((calc_crc >> 8) ^ frame_end_byte) & 0xFF];
 
     if (rx_crc != calc_crc) {
-        fprintf(stderr, "[DATA_CRC_ERR] Got %04X, expected %04X\n", rx_crc, calc_crc);
+        ZM_DEBUG("[DATA_CRC_ERR] Got %04X, expected %04X\n", rx_crc, calc_crc);
         return ZM_CRC_ERROR;
     }
 
@@ -578,7 +585,7 @@ zm_error_t zm_receive_file(zm_ctx_t *ctx, uint8_t *buffer, uint32_t max_size,
         ctx->file_pos += block_len;
         if (ctx->file_pos > max_size) return ZM_FILE_ERROR;
 
-        fprintf(stderr, "[RECV_FILE] Got block len=%u frame_end=%02X pos=%u\n",
+        ZM_DEBUG("[RECV_FILE] Got block len=%u frame_end=%02X pos=%u\n",
                 block_len, block_frame_end, ctx->file_pos);
 
         // Check frame_end to determine next action
@@ -594,7 +601,7 @@ zm_error_t zm_receive_file(zm_ctx_t *ctx, uint8_t *buffer, uint32_t max_size,
             if (hdr.type == ZDATA) continue;  // More data follows
             return ZM_PROTOCOL_ERROR;
         } else {
-            fprintf(stderr, "[RECV_FILE_ERR] Unknown frame_end: %02X\n", block_frame_end);
+            ZM_DEBUG("[RECV_FILE_ERR] Unknown frame_end: %02X\n", block_frame_end);
             return ZM_PROTOCOL_ERROR;
         }
     }

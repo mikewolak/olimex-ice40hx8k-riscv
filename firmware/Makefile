@@ -33,12 +33,21 @@ TARGET ?= led_blink
 SOURCES = $(TARGET).c
 ASM_SOURCES = start.S
 
+# ZMODEM library paths
+ZMODEM_DIR = ../lib/zmodem
+ZMODEM_SRC = $(ZMODEM_DIR)/zmodem.c
+ZMODEM_OBJ = zmodem.o
+
 # Use newlib flag (set USE_NEWLIB=1 to link with newlib)
 USE_NEWLIB ?= 0
+
+# Use ZMODEM flag (auto-set for ZMODEM targets)
+USE_ZMODEM ?= 0
 
 # All firmware targets
 FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock
 NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test
+ZMODEM_TARGETS = hexedit
 
 # Compiler flags for RV32IM
 ARCH = rv32im
@@ -46,6 +55,11 @@ ABI = ilp32
 CFLAGS = -march=$(ARCH) -mabi=$(ABI) -O2 -g
 CFLAGS += -Wall -Wextra
 CFLAGS += -ffreestanding -fno-builtin
+
+# Add ZMODEM include path if needed
+ifeq ($(USE_ZMODEM),1)
+    CFLAGS += -I$(ZMODEM_DIR) -DZM_NO_DEBUG
+endif
 
 # Conditional flags based on newlib usage
 ifeq ($(USE_NEWLIB),1)
@@ -67,6 +81,12 @@ else
     LDFLAGS += -Wl,-Map=$(TARGET).map
     LIBS = -lgcc
     $(info Building WITHOUT newlib (bare metal))
+endif
+
+# Add ZMODEM object if needed
+ifeq ($(USE_ZMODEM),1)
+    LIBS := $(ZMODEM_OBJ) $(LIBS)
+    $(info Building WITH ZMODEM support)
 endif
 
 # Output files
@@ -96,6 +116,14 @@ all-targets:
 	@echo "All bare-metal firmware built successfully!"
 	@echo "========================================="
 	@ls -lh *.bin
+
+# Build hexedit with ZMODEM
+hexedit:
+	@echo "========================================="
+	@echo "Building hexedit with ZMODEM support..."
+	@echo "========================================="
+	$(MAKE) TARGET=hexedit USE_ZMODEM=1 USE_NEWLIB=1 single-target
+	@echo "✓ hexedit built successfully"
 
 # Build newlib targets if newlib is installed
 all-newlib-targets:
@@ -144,8 +172,15 @@ single-target: $(BIN) $(LST) size
 $(SYSCALLS_OBJ): ../lib/syscalls.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Compile ZMODEM library (needed for hexedit)
+$(ZMODEM_OBJ): $(ZMODEM_SRC)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # Link ELF
 $(ELF): $(SOURCES) $(ASM_SOURCES) linker.ld
+ifeq ($(USE_ZMODEM),1)
+	$(MAKE) $(ZMODEM_OBJ)
+endif
 ifeq ($(USE_NEWLIB),1)
 	$(MAKE) $(SYSCALLS_OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(ASM_SOURCES) $(SOURCES) $(LIBS) -o $@
