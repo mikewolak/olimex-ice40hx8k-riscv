@@ -59,25 +59,48 @@ ihex_error_t ihex_receive(ihex_callbacks_t *callbacks) {
     uint32_t base_addr = 0;  // Upper 16 bits for extended linear address
 
     while (1) {
-        // Read one line
+        // Read one line - skip whitespace/garbage until we find ':'
         int line_len = 0;
+        int found_start = 0;
+
+        // Wait for ':' (start of Intel HEX record)
+        while (!found_start) {
+            int c = callbacks->getc();
+            if (c < 0) return IHEX_ERROR;  // Timeout or error
+
+            // Check for Ctrl-C (cancel)
+            if (c == 0x03) {
+                return IHEX_ERROR;  // User cancelled
+            }
+
+            // Skip whitespace and garbage
+            if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+                continue;
+            }
+
+            if (c == ':') {
+                line[line_len++] = (char)c;
+                found_start = 1;
+                break;
+            }
+
+            // Unexpected character - might be garbage, skip it
+            // Just continue and keep looking for ':'
+            continue;
+        }
+
+        // Read rest of line until newline
         while (line_len < IHEX_MAX_LINE_LEN - 1) {
             int c = callbacks->getc();
             if (c < 0) return IHEX_ERROR;  // Timeout or error
 
             if (c == '\n' || c == '\r') {
-                if (line_len > 0) break;  // Got complete line
-                continue;  // Skip empty lines
+                break;  // Got complete line
             }
 
             line[line_len++] = (char)c;
         }
         line[line_len] = '\0';
-
-        // Must start with ':'
-        if (line_len < 1 || line[0] != ':') {
-            return IHEX_ERROR_INVALID_START;
-        }
 
         // Minimum valid line: :LLAAAATTCC (11 chars)
         if (line_len < 11) {
