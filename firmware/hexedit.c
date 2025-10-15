@@ -406,6 +406,9 @@ void cmd_visual(uint32_t start_addr) {
     int editing = 0;    // Edit mode flag
     int edit_nibble = 0; // 0=high nibble, 1=low nibble
     uint8_t edit_value = 0;
+    int old_cursor_x = -1;  // Track old position for redraw
+    int old_cursor_y = -1;
+    int need_full_redraw = 1;  // Full redraw on first iteration
 
     // Initialize curses
     initscr();
@@ -414,61 +417,85 @@ void cmd_visual(uint32_t start_addr) {
     keypad(stdscr, TRUE);
 
     while (1) {
-        // Clear screen
-        clear();
+        // Only do full redraw if needed (first time or page change)
+        if (need_full_redraw) {
+            clear();
 
-        // Draw title bar
-        move(0, 0);
-        attron(A_REVERSE);
-        addstr("Visual Hex Editor - Arrow keys:navigate Enter:edit ESC:exit q:quit");
-        for (int i = 68; i < COLS; i++) addch(' ');
-        standend();
+            // Draw title bar
+            move(0, 0);
+            attron(A_REVERSE);
+            addstr("Visual Hex Editor - Arrow keys:navigate Enter:edit ESC:exit q:quit");
+            for (int i = 68; i < COLS; i++) addch(' ');
+            standend();
 
-        // Draw hex grid (22 rows of 16 bytes each)
-        for (int row = 0; row < 22; row++) {
-            uint32_t addr = top_addr + (row * 16);
-            move(row + 2, 0);
+            // Draw hex grid (22 rows of 16 bytes each)
+            for (int row = 0; row < 22; row++) {
+                uint32_t addr = top_addr + (row * 16);
+                move(row + 2, 0);
 
-            // Print address
-            char addr_str[12];
-            snprintf(addr_str, sizeof(addr_str), "%08X: ", (unsigned int)addr);
-            addstr(addr_str);
+                // Print address
+                char addr_str[12];
+                snprintf(addr_str, sizeof(addr_str), "%08X: ", (unsigned int)addr);
+                addstr(addr_str);
 
-            // Print hex bytes
-            for (int col = 0; col < 16; col++) {
-                uint8_t byte = ((uint8_t *)(addr))[col];
-
-                // Highlight current byte
-                if (row == cursor_y && col == cursor_x && !editing) {
-                    attron(A_REVERSE);
+                // Print hex bytes
+                for (int col = 0; col < 16; col++) {
+                    uint8_t byte = ((uint8_t *)(addr))[col];
+                    char hex_str[4];
+                    snprintf(hex_str, sizeof(hex_str), "%02X ", byte);
+                    addstr(hex_str);
                 }
 
-                // Print hex byte
-                char hex_str[4];
-                snprintf(hex_str, sizeof(hex_str), "%02X ", byte);
-                addstr(hex_str);
-
-                if (row == cursor_y && col == cursor_x && !editing) {
-                    standend();
-                }
-            }
-
-            // Print ASCII
-            addstr(" ");
-            for (int col = 0; col < 16; col++) {
-                uint8_t byte = ((uint8_t *)(addr))[col];
-                char c = (byte >= 32 && byte < 127) ? byte : '.';
-
-                if (row == cursor_y && col == cursor_x && !editing) {
-                    attron(A_REVERSE);
-                }
-
-                addch(c);
-
-                if (row == cursor_y && col == cursor_x && !editing) {
-                    standend();
+                // Print ASCII
+                addstr(" ");
+                for (int col = 0; col < 16; col++) {
+                    uint8_t byte = ((uint8_t *)(addr))[col];
+                    char c = (byte >= 32 && byte < 127) ? byte : '.';
+                    addch(c);
                 }
             }
+
+            need_full_redraw = 0;
+            old_cursor_x = -1;  // Force highlight draw
+            old_cursor_y = -1;
+        }
+
+        // Redraw old cursor position (unhighlight)
+        if (old_cursor_x >= 0 && old_cursor_y >= 0) {
+            uint32_t old_addr = top_addr + (old_cursor_y * 16) + old_cursor_x;
+            uint8_t old_byte = ((uint8_t *)old_addr)[0];
+
+            // Unhighlight hex
+            move(old_cursor_y + 2, 10 + (old_cursor_x * 3));
+            char hex_str[4];
+            snprintf(hex_str, sizeof(hex_str), "%02X ", old_byte);
+            addstr(hex_str);
+
+            // Unhighlight ASCII
+            move(old_cursor_y + 2, 10 + (16 * 3) + 1 + old_cursor_x);
+            char c = (old_byte >= 32 && old_byte < 127) ? old_byte : '.';
+            addch(c);
+        }
+
+        // Draw new cursor position (highlight)
+        if (!editing) {
+            uint32_t new_addr = top_addr + (cursor_y * 16) + cursor_x;
+            uint8_t new_byte = ((uint8_t *)new_addr)[0];
+
+            // Highlight hex
+            move(cursor_y + 2, 10 + (cursor_x * 3));
+            attron(A_REVERSE);
+            char hex_str[4];
+            snprintf(hex_str, sizeof(hex_str), "%02X ", new_byte);
+            addstr(hex_str);
+            standend();
+
+            // Highlight ASCII
+            move(cursor_y + 2, 10 + (16 * 3) + 1 + cursor_x);
+            attron(A_REVERSE);
+            char c = (new_byte >= 32 && new_byte < 127) ? new_byte : '.';
+            addch(c);
+            standend();
         }
 
         // Status bar
@@ -539,8 +566,14 @@ void cmd_visual(uint32_t start_addr) {
                     // Write the byte
                     uint32_t addr = top_addr + (cursor_y * 16) + cursor_x;
                     *((uint8_t *)addr) = edit_value;
+
+                    // Save position for redraw
+                    old_cursor_x = cursor_x;
+                    old_cursor_y = cursor_y;
+
                     editing = 0;
                     edit_nibble = 0;
+
                     // Move to next byte
                     cursor_x++;
                     if (cursor_x >= 16) {
@@ -549,6 +582,7 @@ void cmd_visual(uint32_t start_addr) {
                         if (cursor_y >= 22) {
                             cursor_y = 21;
                             top_addr += 16;
+                            need_full_redraw = 1;
                         }
                     }
                 }
@@ -562,8 +596,14 @@ void cmd_visual(uint32_t start_addr) {
                     // Write the byte
                     uint32_t addr = top_addr + (cursor_y * 16) + cursor_x;
                     *((uint8_t *)addr) = edit_value;
+
+                    // Save position for redraw
+                    old_cursor_x = cursor_x;
+                    old_cursor_y = cursor_y;
+
                     editing = 0;
                     edit_nibble = 0;
+
                     // Move to next byte
                     cursor_x++;
                     if (cursor_x >= 16) {
@@ -572,6 +612,7 @@ void cmd_visual(uint32_t start_addr) {
                         if (cursor_y >= 22) {
                             cursor_y = 21;
                             top_addr += 16;
+                            need_full_redraw = 1;
                         }
                     }
                 }
@@ -598,35 +639,50 @@ void cmd_visual(uint32_t start_addr) {
                 // Arrow keys (curses KEY_* constants)
                 case 'h':  // Left (vi-style)
                 case 68:   // Left arrow (if keypad works)
-                    if (cursor_x > 0) cursor_x--;
+                    if (cursor_x > 0) {
+                        old_cursor_x = cursor_x;
+                        old_cursor_y = cursor_y;
+                        cursor_x--;
+                    }
                     break;
 
                 case 'l':  // Right (vi-style)
                 case 67:   // Right arrow
-                    if (cursor_x < 15) cursor_x++;
+                    if (cursor_x < 15) {
+                        old_cursor_x = cursor_x;
+                        old_cursor_y = cursor_y;
+                        cursor_x++;
+                    }
                     break;
 
                 case 'k':  // Up (vi-style)
                 case 65:   // Up arrow
                     if (cursor_y > 0) {
+                        old_cursor_x = cursor_x;
+                        old_cursor_y = cursor_y;
                         cursor_y--;
                     } else if (top_addr >= 16) {
                         top_addr -= 16;
+                        need_full_redraw = 1;
                     }
                     break;
 
                 case 'j':  // Down (vi-style)
                 case 66:   // Down arrow
                     if (cursor_y < 21) {
+                        old_cursor_x = cursor_x;
+                        old_cursor_y = cursor_y;
                         cursor_y++;
                     } else {
                         top_addr += 16;
+                        need_full_redraw = 1;
                     }
                     break;
 
                 case ' ':  // Page down
                 case 'f':  // Page forward
                     top_addr += (22 * 16);
+                    need_full_redraw = 1;
                     break;
 
                 case 'b':  // Page back
@@ -635,12 +691,14 @@ void cmd_visual(uint32_t start_addr) {
                     } else {
                         top_addr = 0;
                     }
+                    need_full_redraw = 1;
                     break;
 
                 case 'g':  // Go to address (simple version - go to start)
                     top_addr = 0;
                     cursor_x = 0;
                     cursor_y = 0;
+                    need_full_redraw = 1;
                     break;
             }
         }
