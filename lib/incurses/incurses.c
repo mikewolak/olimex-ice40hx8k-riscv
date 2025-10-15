@@ -161,21 +161,27 @@ _mbedserial_puts(const char *str)
 
 #elif defined(__riscv) || defined(EMBEDDED_UART)
 /*-----------------------------------------------------------------------
- *      RISC-V / Embedded UART driver (stdio-based)
- *      Uses getchar/putchar which redirect to UART via newlib syscalls
+ *      RISC-V / Embedded UART driver (direct hardware access)
+ *      Bypasses stdio to get unbuffered character input for curses
  *-----------------------------------------------------------------------*/
+// External UART functions (defined in hexedit.c)
+extern char uart_getc(void);
+extern void uart_putc(char c);
+extern int uart_getc_available(void);
+
 static int
 _embeddedserial_getc(int timeout_ms)
 {
-    /* FIXME honour timeout */
-    return getchar();
+    /* Direct UART access for unbuffered input */
+    (void)timeout_ms;  // Ignore timeout for now
+    return (int)uart_getc();
 }
 
 static void
 _embeddedserial_putc(int c)
 {
     DBGC(c);
-    fputc(c, stdout);
+    uart_putc((char)c);
 }
 
 static void
@@ -193,7 +199,7 @@ _embeddedserial_puts(const char *str)
 #define DRV_FLUSHIN()
 #define DRV_PUTC _embeddedserial_putc
 #define DRV_PUTS _embeddedserial_puts
-#define DRV_FLUSH() fflush(stdout)
+#define DRV_FLUSH()
 
 #else
 /*-----------------------------------------------------------------------
