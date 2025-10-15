@@ -27,8 +27,8 @@
 #define XMODEM_PAD  0x1A    // Ctrl-Z padding
 
 // Timeouts and retries
-#define XMODEM_TIMEOUT_INIT     1800000 // 30 minutes to start transfer (manual testing)
-#define XMODEM_TIMEOUT_BLOCK    1800000 // 30 minutes per block
+#define XMODEM_TIMEOUT_INIT     60000   // 60 seconds to start transfer
+#define XMODEM_TIMEOUT_BLOCK    10000   // 10 seconds per block
 #define XMODEM_TIMEOUT_CHAR     1000    // 1 second between characters
 #define XMODEM_MAX_RETRIES      10      // Max retransmissions per block
 

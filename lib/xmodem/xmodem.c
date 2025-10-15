@@ -70,7 +70,7 @@ xmodem_error_t xmodem_receive(xmodem_ctx_t *ctx, uint8_t *buffer, uint32_t max_s
     uint32_t start_time = ctx->callbacks->gettime();
     uint32_t last_c_time = 0;
 
-    while ((ctx->callbacks->gettime() - start_time) < 60000) {  // 60 second timeout
+    while ((ctx->callbacks->gettime() - start_time) < XMODEM_TIMEOUT_INIT) {
         // Send 'C' every 3 seconds
         uint32_t now = ctx->callbacks->gettime();
         if ((now - last_c_time) >= 3000) {
