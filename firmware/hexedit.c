@@ -28,6 +28,18 @@
 #define UART_RX_DATA   (*(volatile uint32_t *)0x80000008)
 #define UART_RX_STATUS (*(volatile uint32_t *)0x8000000C)
 
+// Timer registers
+#define TIMER_BASE          0x80000020
+#define TIMER_CR            (*(volatile uint32_t*)(TIMER_BASE + 0x00))
+#define TIMER_SR            (*(volatile uint32_t*)(TIMER_BASE + 0x04))
+#define TIMER_PSC           (*(volatile uint32_t*)(TIMER_BASE + 0x08))
+#define TIMER_ARR           (*(volatile uint32_t*)(TIMER_BASE + 0x0C))
+#define TIMER_CNT           (*(volatile uint32_t*)(TIMER_BASE + 0x10))
+
+#define TIMER_CR_ENABLE     (1 << 0)
+#define TIMER_CR_ONE_SHOT   (1 << 1)
+#define TIMER_SR_UIF        (1 << 0)
+
 // Memory layout (based on linker script)
 // Physical memory: 0x00000000 - 0x0007FFFF (512KB SRAM)
 // Application:     0x00000000 - 0x0003FFFF (256KB for code/data/bss)
@@ -43,6 +55,12 @@
 // ZMODEM auto-start pattern: ZPAD ZPAD ZDLE ZHEX = 0x2A 0x2A 0x18 0x42
 // (ZPAD and ZHEX defined in zmodem.h)
 #define ZDLE  0x18
+
+//==============================================================================
+// Forward Declarations
+//==============================================================================
+void timer_init(void);
+uint32_t get_time_ms(void);
 
 //==============================================================================
 // UART Functions
@@ -70,9 +88,8 @@ char getc(void) {
 }
 
 char getc_timeout(uint32_t timeout_ms) {
-    // Simple timeout implementation
-    volatile uint32_t count = timeout_ms * 1000;  // Approximate delay loop
-    while (count--) {
+    uint32_t start = get_time_ms();
+    while ((get_time_ms() - start) < timeout_ms) {
         if (getc_available()) {
             return UART_RX_DATA & 0xFF;
         }
@@ -81,14 +98,26 @@ char getc_timeout(uint32_t timeout_ms) {
 }
 
 //==============================================================================
-// Utility Functions
+// Timer Functions
 //==============================================================================
 
-// Get approximate time in milliseconds (very rough, no timer)
-static uint32_t time_ms = 0;
-uint32_t get_time_ms(void) {
-    return time_ms++;  // Increment on each call for simplicity
+// Initialize timer for 1ms ticks (assumes 12MHz clock)
+void timer_init(void) {
+    TIMER_CR = 0;  // Disable timer
+    TIMER_PSC = 11999;  // 12MHz / (11999+1) = 1000 Hz = 1ms ticks
+    TIMER_ARR = 0xFFFFFFFF;  // Max count (free-running)
+    TIMER_CNT = 0;  // Reset counter
+    TIMER_CR = TIMER_CR_ENABLE;  // Enable timer
 }
+
+// Get current time in milliseconds
+uint32_t get_time_ms(void) {
+    return TIMER_CNT;  // Timer counts in milliseconds
+}
+
+//==============================================================================
+// Utility Functions
+//==============================================================================
 
 // Convert hex digit to value
 int hex_to_val(char c) {
@@ -271,7 +300,7 @@ void cmd_zmodem_receive(void) {
     puts("\n");
     puts("=== ZMODEM Receive ===\n");
     puts("Waiting for sender to start transfer...\n");
-    puts("(Press Ctrl-X 5 times to cancel)\n");
+    puts("(Send Ctrl-X five times from sender to cancel)\n");
     puts("\n");
 
     // Set up ZMODEM context
@@ -306,9 +335,58 @@ void cmd_zmodem_receive(void) {
         puts("\n");
         puts("\n");
         puts("Use 'c <src> <dst> <len>' to copy data elsewhere\n");
+    } else if (err == ZM_CANCEL) {
+        puts("\n*** Transfer cancelled ***\n");
+    } else if (err == ZM_TIMEOUT) {
+        puts("\n*** Transfer timeout ***\n");
     } else {
         puts("\n");
-        puts("Transfer failed: ");
+        puts("Transfer failed with error: ");
+        print_dec(-err);
+        puts("\n");
+    }
+}
+
+void cmd_zmodem_send(uint32_t addr, uint32_t len, const char *filename_arg) {
+    puts("\n");
+    puts("=== ZMODEM Send ===\n");
+    puts("Sending ");
+    print_dec(len);
+    puts(" bytes from 0x");
+    print_hex_word(addr);
+    puts("\n");
+    puts("Filename: ");
+    puts(filename_arg);
+    puts("\n");
+    puts("\n");
+
+    // Set up ZMODEM context
+    zm_callbacks_t callbacks = {
+        .getc = zm_uart_getc,
+        .putc = zm_uart_putc,
+        .gettime = zm_get_time
+    };
+
+    zm_ctx_t ctx;
+    zm_init(&ctx, &callbacks);
+
+    // Send file
+    uint8_t *buffer = (uint8_t *)addr;
+    zm_error_t err = zm_send_file(&ctx, buffer, len, filename_arg);
+
+    if (err == ZM_OK) {
+        puts("\n");
+        puts("=== Transfer Complete ===\n");
+        puts("Sent ");
+        print_dec(len);
+        puts(" bytes\n");
+    } else if (err == ZM_CANCEL) {
+        puts("\n*** Transfer cancelled by receiver ***\n");
+    } else if (err == ZM_TIMEOUT) {
+        puts("\n*** Transfer timeout ***\n");
+    } else {
+        puts("\n");
+        puts("Transfer failed with error: ");
         print_dec(-err);
         puts("\n");
     }
@@ -448,18 +526,35 @@ void execute_command(const char *cmd) {
             break;
         }
 
+        case 's':  // ZMODEM send
+        case 'S': {
+            uint32_t addr = parse_hex(cmd, &cmd);
+            skip_whitespace(&cmd);
+            uint32_t len = parse_hex(cmd, &cmd);
+            skip_whitespace(&cmd);
+            // Get filename (rest of the line)
+            const char *filename = cmd;
+            if (len > 0 && *filename) {
+                cmd_zmodem_send(addr, len, filename);
+            } else {
+                puts("Usage: s <addr> <len> <filename>\n");
+            }
+            break;
+        }
+
         case 'h':  // Help
         case 'H':
         case '?': {
             puts("\n");
             puts("Commands:\n");
-            puts("  d <addr> [len]        - Dump memory (hex+ASCII)\n");
-            puts("  r <addr>              - Read byte\n");
-            puts("  w <addr> <value>      - Write byte\n");
-            puts("  c <src> <dst> <len>   - Copy memory block\n");
-            puts("  f <addr> <len> <val>  - Fill memory\n");
-            puts("  z                     - ZMODEM receive\n");
-            puts("  h or ?                - This help\n");
+            puts("  d <addr> [len]           - Dump memory (hex+ASCII)\n");
+            puts("  r <addr>                 - Read byte\n");
+            puts("  w <addr> <value>         - Write byte\n");
+            puts("  c <src> <dst> <len>      - Copy memory block\n");
+            puts("  f <addr> <len> <val>     - Fill memory\n");
+            puts("  z                        - ZMODEM receive file\n");
+            puts("  s <addr> <len> <name>    - ZMODEM send file\n");
+            puts("  h or ?                   - This help\n");
             puts("\n");
             puts("Addresses and values in hex (0x optional)\n");
             puts("ZMODEM buffer at: 0x");
@@ -482,6 +577,9 @@ void execute_command(const char *cmd) {
 int main(void) {
     cmd_buffer_t cmd_buf;
     zmodem_detector_t zmodem_det;
+
+    // Initialize hardware timer for timeouts
+    timer_init();
 
     cmd_buffer_init(&cmd_buf);
     zmodem_detector_init(&zmodem_det);
