@@ -48,6 +48,11 @@ INTELHEX_DIR = ../lib/intelhex
 INTELHEX_SRC = $(INTELHEX_DIR)/intelhex.c
 INTELHEX_OBJ = intelhex.o
 
+# Simple Upload library paths
+SIMPLE_UPLOAD_DIR = ../lib/simple_upload
+SIMPLE_UPLOAD_SRC = $(SIMPLE_UPLOAD_DIR)/simple_upload.c
+SIMPLE_UPLOAD_OBJ = simple_upload.o
+
 # MicroRL library paths
 MICRORL_DIR = ../lib/microrl
 MICRORL_SRC = $(MICRORL_DIR)/microrl.c
@@ -73,7 +78,7 @@ CFLAGS += -ffreestanding -fno-builtin
 
 # Add ZMODEM include path if needed
 ifeq ($(USE_ZMODEM),1)
-    CFLAGS += -I$(ZMODEM_DIR) -I$(XMODEM_DIR) -I$(INTELHEX_DIR) -DZM_NO_DEBUG
+    CFLAGS += -I$(ZMODEM_DIR) -I$(XMODEM_DIR) -I$(INTELHEX_DIR) -I$(SIMPLE_UPLOAD_DIR) -DZM_NO_DEBUG
 endif
 
 # Hexedit always uses microRL
@@ -103,10 +108,10 @@ else
     $(info Building WITHOUT newlib (bare metal))
 endif
 
-# Add ZMODEM, XMODEM, and Intel HEX objects if needed
+# Add ZMODEM, XMODEM, Intel HEX, and Simple Upload objects if needed
 ifeq ($(USE_ZMODEM),1)
-    LIBS := $(ZMODEM_OBJ) $(XMODEM_OBJ) $(INTELHEX_OBJ) $(LIBS)
-    $(info Building WITH ZMODEM, XMODEM, and Intel HEX support)
+    LIBS := $(ZMODEM_OBJ) $(XMODEM_OBJ) $(INTELHEX_OBJ) $(SIMPLE_UPLOAD_OBJ) $(LIBS)
+    $(info Building WITH ZMODEM, XMODEM, Intel HEX, and Simple Upload support)
 endif
 
 # Output files
@@ -204,6 +209,10 @@ $(XMODEM_OBJ): $(XMODEM_SRC)
 $(INTELHEX_OBJ): $(INTELHEX_SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Compile Simple Upload library (needed for hexedit)
+$(SIMPLE_UPLOAD_OBJ): $(SIMPLE_UPLOAD_SRC)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # Compile MicroRL library (needed for hexedit)
 $(MICRORL_OBJ): $(MICRORL_SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -214,6 +223,7 @@ ifeq ($(USE_ZMODEM),1)
 	$(MAKE) $(ZMODEM_OBJ)
 	$(MAKE) $(XMODEM_OBJ)
 	$(MAKE) $(INTELHEX_OBJ)
+	$(MAKE) $(SIMPLE_UPLOAD_OBJ)
 endif
 ifeq ($(TARGET),hexedit)
 	$(MAKE) $(MICRORL_OBJ)

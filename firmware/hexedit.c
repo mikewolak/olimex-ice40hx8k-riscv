@@ -24,6 +24,7 @@
 #include "../lib/zmodem/zmodem.h"
 #include "../lib/xmodem/xmodem.h"
 #include "../lib/intelhex/intelhex.h"
+#include "../lib/simple_upload/simple_upload.h"
 #include "../lib/microrl/microrl.h"
 
 // Hardware addresses
@@ -713,6 +714,63 @@ void cmd_intelhex_send(uint32_t addr, uint32_t len) {
 }
 
 //==============================================================================
+// Simple Upload Protocol Commands
+//==============================================================================
+
+// UART callbacks for simple_upload
+static void simple_uart_putc(uint8_t c) {
+    while (UART_TX_STATUS & 1);  // Wait while busy
+    UART_TX_DATA = c;
+}
+
+static uint8_t simple_uart_getc(void) {
+    while (!(UART_RX_STATUS & 1));  // Wait until data available
+    return UART_RX_DATA & 0xFF;
+}
+
+void cmd_simple_upload(uint32_t addr) {
+    // Flush UART RX buffer FIRST
+    uart_flush_rx();
+
+    uart_puts("\n");
+    uart_puts("=== Simple Upload (bootloader protocol) ===\n");
+    uart_puts("Receiving file to address: 0x");
+    print_hex_word(addr);
+    uart_puts("\n");
+    uart_puts("Max size: ");
+    print_dec(ZM_MAX_RECEIVE);
+    uart_puts(" bytes\n");
+    uart_puts("\n");
+    uart_puts("Start fw_upload on your PC now...\n");
+
+    // Set up callbacks
+    simple_callbacks_t callbacks = {
+        .putc = simple_uart_putc,
+        .getc = simple_uart_getc
+    };
+
+    // Receive file using bootloader protocol
+    int32_t bytes = simple_receive(&callbacks, (uint8_t *)addr, ZM_MAX_RECEIVE);
+
+    if (bytes > 0) {
+        uart_puts("\n");
+        uart_puts("*** Upload SUCCESS ***\n");
+        uart_puts("Received: ");
+        print_dec((uint32_t)bytes);
+        uart_puts(" bytes\n");
+        uart_puts("Address: 0x");
+        print_hex_word(addr);
+        uart_puts("\n");
+    } else {
+        uart_puts("\n");
+        uart_puts("*** Upload FAILED ***\n");
+        uart_puts("Error code: ");
+        print_dec((uint32_t)(-bytes));
+        uart_puts("\n");
+    }
+}
+
+//==============================================================================
 // MicroRL Callbacks
 //==============================================================================
 
@@ -928,6 +986,27 @@ void execute_command(const char *cmd) {
             break;
         }
 
+        case 'u':  // Upload using bootloader protocol
+        case 'U': {
+            // Check if this is 'up' (upload from PC)
+            if (*cmd == 'p' || *cmd == 'P') {
+                cmd++;  // Skip 'p'/'P'
+                skip_whitespace(&cmd);
+                uint32_t addr = parse_hex(cmd, &cmd);
+                if (addr == 0 && *cmd == '\0') {
+                    addr = ZM_BUFFER_ADDR;  // Default to transfer buffer
+                }
+                cmd_simple_upload(addr);
+            } else {
+                uart_puts("Upload command:\n");
+                uart_puts("  up [addr]  - Upload file (bootloader protocol)\n");
+                uart_puts("               Default addr: 0x");
+                print_hex_word(ZM_BUFFER_ADDR);
+                uart_puts("\n");
+            }
+            break;
+        }
+
         case 'h':  // Help
         case 'H':
         case '?': {
@@ -939,6 +1018,7 @@ void execute_command(const char *cmd) {
             uart_puts("  w <addr> <value>         - Write byte\n");
             uart_puts("  c <src> <dst> <len>      - Copy memory block\n");
             uart_puts("  f <addr> <len> <val>     - Fill memory\n");
+            uart_puts("  up [addr]                - Upload file (bootloader protocol)\n");
             uart_puts("  z                        - ZMODEM receive file\n");
             uart_puts("  s <addr> <len> <name>    - ZMODEM send file\n");
             uart_puts("  xr                       - XMODEM-1K receive file\n");
