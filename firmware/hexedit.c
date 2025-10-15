@@ -400,15 +400,17 @@ void cmd_simple_upload(uint32_t addr) {
 
 // Visual hex editor with curses interface
 void cmd_visual(uint32_t start_addr) {
-    int cursor_x = 0;   // 0-15 (byte column)
+    int cursor_x = 0;   // 0-15 (byte column) or 0-7 (word) or 0-3 (dword)
     int cursor_y = 0;   // 0-21 (row on screen)
     uint32_t top_addr = start_addr & ~0xF;  // Align to 16-byte boundary
     int editing = 0;    // Edit mode flag
-    int edit_nibble = 0; // 0=high nibble, 1=low nibble
-    uint8_t edit_value = 0;
+    int edit_nibble = 0; // Current nibble being edited
+    uint32_t edit_value = 0;  // Value being edited (byte/word/dword)
     int old_cursor_x = -1;  // Track old position for redraw
     int old_cursor_y = -1;
     int need_full_redraw = 1;  // Full redraw on first iteration
+    int view_mode = 0;  // 0=byte, 1=word(16-bit), 2=dword(32-bit)
+    int max_cursor_x = 15;  // Maximum X position (15 for byte, 7 for word, 3 for dword)
 
     // Initialize curses
     initscr();
@@ -421,11 +423,14 @@ void cmd_visual(uint32_t start_addr) {
         if (need_full_redraw) {
             clear();
 
-            // Draw title bar
+            // Draw title bar with view mode
             move(0, 0);
             attron(A_REVERSE);
-            addstr("Visual Hex Editor - Arrow keys:navigate Enter:edit ESC:exit q:quit");
-            for (int i = 68; i < COLS; i++) addch(' ');
+            const char *mode_str = (view_mode == 0) ? "BYTE" : (view_mode == 1) ? "WORD" : "DWORD";
+            char title[81];
+            snprintf(title, sizeof(title), "Hex Editor [%s] - Arrows:move Enter:edit W:mode ESC:exit", mode_str);
+            addstr(title);
+            for (int i = strlen(title); i < COLS; i++) addch(' ');
             standend();
 
             // Draw hex grid (22 rows of 16 bytes each)
@@ -438,12 +443,31 @@ void cmd_visual(uint32_t start_addr) {
                 snprintf(addr_str, sizeof(addr_str), "%08X: ", (unsigned int)addr);
                 addstr(addr_str);
 
-                // Print hex bytes
-                for (int col = 0; col < 16; col++) {
-                    uint8_t byte = ((uint8_t *)(addr))[col];
-                    char hex_str[4];
-                    snprintf(hex_str, sizeof(hex_str), "%02X ", byte);
-                    addstr(hex_str);
+                // Print hex data based on view mode
+                if (view_mode == 0) {
+                    // Byte view: 16 bytes
+                    for (int col = 0; col < 16; col++) {
+                        uint8_t byte = ((uint8_t *)(addr))[col];
+                        char hex_str[4];
+                        snprintf(hex_str, sizeof(hex_str), "%02X ", byte);
+                        addstr(hex_str);
+                    }
+                } else if (view_mode == 1) {
+                    // Word view: 8 words (16-bit)
+                    for (int col = 0; col < 8; col++) {
+                        uint16_t word = ((uint16_t *)(addr))[col];
+                        char hex_str[6];
+                        snprintf(hex_str, sizeof(hex_str), "%04X ", (unsigned int)word);
+                        addstr(hex_str);
+                    }
+                } else {
+                    // Dword view: 4 dwords (32-bit)
+                    for (int col = 0; col < 4; col++) {
+                        uint32_t dword = ((uint32_t *)(addr))[col];
+                        char hex_str[10];
+                        snprintf(hex_str, sizeof(hex_str), "%08X ", (unsigned int)dword);
+                        addstr(hex_str);
+                    }
                 }
 
                 // Print ASCII
@@ -460,41 +484,75 @@ void cmd_visual(uint32_t start_addr) {
             old_cursor_y = -1;
         }
 
+        // Calculate bytes per unit and hex spacing based on view mode
+        int bytes_per_unit = (view_mode == 0) ? 1 : (view_mode == 1) ? 2 : 4;
+        int hex_spacing = (view_mode == 0) ? 3 : (view_mode == 1) ? 5 : 9;
+
         // Redraw old cursor position (unhighlight)
         if (old_cursor_x >= 0 && old_cursor_y >= 0) {
-            uint32_t old_addr = top_addr + (old_cursor_y * 16) + old_cursor_x;
-            uint8_t old_byte = ((uint8_t *)old_addr)[0];
+            uint32_t old_addr = top_addr + (old_cursor_y * 16) + (old_cursor_x * bytes_per_unit);
 
-            // Unhighlight hex
-            move(old_cursor_y + 2, 10 + (old_cursor_x * 3));
-            char hex_str[4];
-            snprintf(hex_str, sizeof(hex_str), "%02X ", old_byte);
-            addstr(hex_str);
+            // Unhighlight hex based on view mode
+            move(old_cursor_y + 2, 10 + (old_cursor_x * hex_spacing));
+            if (view_mode == 0) {
+                uint8_t value = ((uint8_t *)old_addr)[0];
+                char hex_str[4];
+                snprintf(hex_str, sizeof(hex_str), "%02X ", value);
+                addstr(hex_str);
+            } else if (view_mode == 1) {
+                uint16_t value = ((uint16_t *)old_addr)[0];
+                char hex_str[6];
+                snprintf(hex_str, sizeof(hex_str), "%04X ", (unsigned int)value);
+                addstr(hex_str);
+            } else {
+                uint32_t value = ((uint32_t *)old_addr)[0];
+                char hex_str[10];
+                snprintf(hex_str, sizeof(hex_str), "%08X ", (unsigned int)value);
+                addstr(hex_str);
+            }
 
-            // Unhighlight ASCII
-            move(old_cursor_y + 2, 10 + (16 * 3) + 1 + old_cursor_x);
-            char c = (old_byte >= 32 && old_byte < 127) ? old_byte : '.';
-            addch(c);
+            // Unhighlight ASCII (multiple bytes for word/dword)
+            for (int i = 0; i < bytes_per_unit; i++) {
+                uint8_t byte = ((uint8_t *)(old_addr + i))[0];
+                char c = (byte >= 32 && byte < 127) ? byte : '.';
+                move(old_cursor_y + 2, 10 + (16 * 3) + 1 + (old_cursor_x * bytes_per_unit) + i);
+                addch(c);
+            }
         }
 
         // Draw new cursor position (highlight)
         if (!editing) {
-            uint32_t new_addr = top_addr + (cursor_y * 16) + cursor_x;
-            uint8_t new_byte = ((uint8_t *)new_addr)[0];
+            uint32_t new_addr = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
 
-            // Highlight hex
-            move(cursor_y + 2, 10 + (cursor_x * 3));
+            // Highlight hex based on view mode
+            move(cursor_y + 2, 10 + (cursor_x * hex_spacing));
             attron(A_REVERSE);
-            char hex_str[4];
-            snprintf(hex_str, sizeof(hex_str), "%02X ", new_byte);
-            addstr(hex_str);
+            if (view_mode == 0) {
+                uint8_t value = ((uint8_t *)new_addr)[0];
+                char hex_str[4];
+                snprintf(hex_str, sizeof(hex_str), "%02X ", value);
+                addstr(hex_str);
+            } else if (view_mode == 1) {
+                uint16_t value = ((uint16_t *)new_addr)[0];
+                char hex_str[6];
+                snprintf(hex_str, sizeof(hex_str), "%04X ", (unsigned int)value);
+                addstr(hex_str);
+            } else {
+                uint32_t value = ((uint32_t *)new_addr)[0];
+                char hex_str[10];
+                snprintf(hex_str, sizeof(hex_str), "%08X ", (unsigned int)value);
+                addstr(hex_str);
+            }
             standend();
 
-            // Highlight ASCII
-            move(cursor_y + 2, 10 + (16 * 3) + 1 + cursor_x);
+            // Highlight ASCII (multiple bytes for word/dword)
             attron(A_REVERSE);
-            char c = (new_byte >= 32 && new_byte < 127) ? new_byte : '.';
-            addch(c);
+            for (int i = 0; i < bytes_per_unit; i++) {
+                uint8_t byte = ((uint8_t *)(new_addr + i))[0];
+                char c = (byte >= 32 && byte < 127) ? byte : '.';
+                move(cursor_y + 2, 10 + (16 * 3) + 1 + (cursor_x * bytes_per_unit) + i);
+                addch(c);
+            }
             standend();
         }
 
@@ -502,20 +560,31 @@ void cmd_visual(uint32_t start_addr) {
         move(LINES - 1, 0);
         attron(A_REVERSE);
         char status[COLS + 1];
-        uint32_t current_addr = top_addr + (cursor_y * 16) + cursor_x;
-        uint8_t current_byte = ((uint8_t *)current_addr)[0];
+        uint32_t current_addr = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
 
         // Show last key code for debugging
         static int last_ch = 0;
-        snprintf(status, sizeof(status),
-                 "Addr:0x%08X Val:0x%02X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
-                 (unsigned int)current_addr,
-                 current_byte,
-                 cursor_x,
-                 cursor_y,
-                 last_ch,
-                 last_ch,
-                 editing ? "EDIT" : "");
+
+        // Display value based on view mode
+        if (view_mode == 0) {
+            uint8_t value = ((uint8_t *)current_addr)[0];
+            snprintf(status, sizeof(status),
+                     "Addr:0x%08X Val:0x%02X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
+                     (unsigned int)current_addr, value, cursor_x, cursor_y,
+                     last_ch, last_ch, editing ? "EDIT" : "");
+        } else if (view_mode == 1) {
+            uint16_t value = ((uint16_t *)current_addr)[0];
+            snprintf(status, sizeof(status),
+                     "Addr:0x%08X Val:0x%04X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
+                     (unsigned int)current_addr, (unsigned int)value, cursor_x, cursor_y,
+                     last_ch, last_ch, editing ? "EDIT" : "");
+        } else {
+            uint32_t value = ((uint32_t *)current_addr)[0];
+            snprintf(status, sizeof(status),
+                     "Addr:0x%08X Val:0x%08X Cur:(%d,%d) LastKey:%d(0x%02X) %s",
+                     (unsigned int)current_addr, (unsigned int)value, cursor_x, cursor_y,
+                     last_ch, last_ch, editing ? "EDIT" : "");
+        }
         addstr(status);
         for (int i = strlen(status); i < COLS; i++) addch(' ');
         standend();
@@ -524,7 +593,7 @@ void cmd_visual(uint32_t start_addr) {
         if (editing) {
             // Show cursor and position it at the edit location
             curs_set(1);
-            move(cursor_y + 2, 10 + (cursor_x * 3) + edit_nibble);
+            move(cursor_y + 2, 10 + (cursor_x * hex_spacing) + edit_nibble);
         } else {
             // Hide cursor when navigating
             curs_set(0);
@@ -555,70 +624,60 @@ void cmd_visual(uint32_t start_addr) {
         }
 
         if (editing) {
+            // Determine max nibbles based on view mode
+            int max_nibbles = (view_mode == 0) ? 2 : (view_mode == 1) ? 4 : 8;
+
             // Edit mode - accept hex digits
+            int digit = -1;
             if (ch >= '0' && ch <= '9') {
-                int digit = ch - '0';
-                if (edit_nibble == 0) {
-                    edit_value = (digit << 4);
-                    edit_nibble = 1;
-                } else {
-                    edit_value |= digit;
-                    // Write the byte
-                    uint32_t addr = top_addr + (cursor_y * 16) + cursor_x;
-                    *((uint8_t *)addr) = edit_value;
-
-                    // Save position for redraw
-                    old_cursor_x = cursor_x;
-                    old_cursor_y = cursor_y;
-
-                    editing = 0;
-                    edit_nibble = 0;
-
-                    // Move to next byte
-                    cursor_x++;
-                    if (cursor_x >= 16) {
-                        cursor_x = 0;
-                        cursor_y++;
-                        if (cursor_y >= 22) {
-                            cursor_y = 21;
-                            top_addr += 16;
-                            need_full_redraw = 1;
-                        }
-                    }
-                }
+                digit = ch - '0';
             } else if ((ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
-                int digit = ((ch & 0xDF) - 'A') + 10;  // Convert to uppercase and get 10-15
-                if (edit_nibble == 0) {
-                    edit_value = (digit << 4);
-                    edit_nibble = 1;
-                } else {
-                    edit_value |= digit;
-                    // Write the byte
-                    uint32_t addr = top_addr + (cursor_y * 16) + cursor_x;
-                    *((uint8_t *)addr) = edit_value;
-
-                    // Save position for redraw
-                    old_cursor_x = cursor_x;
-                    old_cursor_y = cursor_y;
-
-                    editing = 0;
-                    edit_nibble = 0;
-
-                    // Move to next byte
-                    cursor_x++;
-                    if (cursor_x >= 16) {
-                        cursor_x = 0;
-                        cursor_y++;
-                        if (cursor_y >= 22) {
-                            cursor_y = 21;
-                            top_addr += 16;
-                            need_full_redraw = 1;
-                        }
-                    }
-                }
+                digit = ((ch & 0xDF) - 'A') + 10;
             } else if (ch == 27) {  // ESC - cancel edit
                 editing = 0;
                 edit_nibble = 0;
+                digit = -1;
+            }
+
+            if (digit >= 0) {
+                // Add this nibble to edit_value
+                if (edit_nibble == 0) {
+                    edit_value = 0;  // Reset for new value
+                }
+                edit_value = (edit_value << 4) | digit;
+                edit_nibble++;
+
+                // Check if we've entered all nibbles
+                if (edit_nibble >= max_nibbles) {
+                    // Write the value based on view mode
+                    uint32_t addr = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
+                    if (view_mode == 0) {
+                        *((uint8_t *)addr) = (uint8_t)edit_value;
+                    } else if (view_mode == 1) {
+                        *((uint16_t *)addr) = (uint16_t)edit_value;
+                    } else {
+                        *((uint32_t *)addr) = edit_value;
+                    }
+
+                    // Save position for redraw
+                    old_cursor_x = cursor_x;
+                    old_cursor_y = cursor_y;
+
+                    editing = 0;
+                    edit_nibble = 0;
+
+                    // Move to next unit
+                    cursor_x++;
+                    if (cursor_x > max_cursor_x) {
+                        cursor_x = 0;
+                        cursor_y++;
+                        if (cursor_y >= 22) {
+                            cursor_y = 21;
+                            top_addr += 16;
+                            need_full_redraw = 1;
+                        }
+                    }
+                }
             }
         } else {
             // Navigation mode
@@ -648,7 +707,7 @@ void cmd_visual(uint32_t start_addr) {
 
                 case 'l':  // Right (vi-style)
                 case 67:   // Right arrow
-                    if (cursor_x < 15) {
+                    if (cursor_x < max_cursor_x) {
                         old_cursor_x = cursor_x;
                         old_cursor_y = cursor_y;
                         cursor_x++;
@@ -698,6 +757,24 @@ void cmd_visual(uint32_t start_addr) {
                     top_addr = 0;
                     cursor_x = 0;
                     cursor_y = 0;
+                    need_full_redraw = 1;
+                    break;
+
+                case 'w':  // Cycle view mode (byte -> word -> dword)
+                case 'W':
+                    view_mode = (view_mode + 1) % 3;
+                    // Update max cursor position based on view mode
+                    if (view_mode == 0) {
+                        max_cursor_x = 15;  // 16 bytes
+                    } else if (view_mode == 1) {
+                        max_cursor_x = 7;   // 8 words
+                    } else {
+                        max_cursor_x = 3;   // 4 dwords
+                    }
+                    // Adjust cursor if out of bounds
+                    if (cursor_x > max_cursor_x) {
+                        cursor_x = max_cursor_x;
+                    }
                     need_full_redraw = 1;
                     break;
             }
