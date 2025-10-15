@@ -20,6 +20,11 @@ struct stat {
 // errno variable
 int errno;
 
+// errno accessor for newlib (used by libm)
+int* __errno(void) {
+    return &errno;
+}
+
 // UART Register Definitions
 #define UART_TX_DATA   (*(volatile unsigned int*)0x80000000)
 #define UART_TX_STATUS (*(volatile unsigned int*)0x80000004)
