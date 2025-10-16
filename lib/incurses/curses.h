@@ -157,6 +157,8 @@ extern int wclear(WINDOW *);
 extern int wrefresh(WINDOW *);
 extern int wnoutrefresh(WINDOW *);
 extern int doupdate(void);
+extern int insertln(void);
+extern int deleteln(void);
 
 #ifdef __cplusplus
 }

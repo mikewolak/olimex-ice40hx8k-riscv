@@ -670,6 +670,22 @@ doupdate(void)
     return refresh();
 }
 
+int
+insertln(void)
+{
+    /* Insert a blank line at cursor position, scrolling down */
+    DRV_PUTS(ESC"[L");
+    return OK;
+}
+
+int
+deleteln(void)
+{
+    /* Delete line at cursor position, scrolling up */
+    DRV_PUTS(ESC"[M");
+    return OK;
+}
+
 /*-----------------------------------------------------------------------
  *	internals
  *-----------------------------------------------------------------------*/

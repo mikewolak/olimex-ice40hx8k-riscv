@@ -479,6 +479,67 @@ static void redraw_unit(uint32_t addr, uint32_t top_addr, int view_mode, int hig
     if (highlight) standend();
 }
 
+// Helper: Redraw a single row (16 bytes) at given address
+static void redraw_row(uint32_t row_addr, uint32_t top_addr, int view_mode,
+                       uint32_t mark_start, uint32_t mark_end, int marking) {
+    // Check if row is visible on screen
+    if (row_addr < top_addr || row_addr >= top_addr + (21 * 16)) {
+        return;  // Not on screen
+    }
+
+    int bytes_per_unit = (view_mode == 0) ? 1 : (view_mode == 1) ? 2 : 4;
+    int max_cursor_x = (view_mode == 0) ? 15 : (view_mode == 1) ? 7 : 3;
+    int hex_spacing = (view_mode == 0) ? 3 : (view_mode == 1) ? 5 : 9;
+    int row = (row_addr - top_addr) / 16;
+
+    // Draw address
+    move(row + 2, 0);
+    char addr_str[11];
+    snprintf(addr_str, sizeof(addr_str), "%08X: ", (unsigned int)row_addr);
+    addstr(addr_str);
+
+    // Draw hex values
+    for (int col = 0; col <= max_cursor_x; col++) {
+        uint32_t addr = row_addr + (col * bytes_per_unit);
+        int highlight = (marking && addr >= mark_start && addr <= mark_end);
+
+        move(row + 2, 10 + (col * hex_spacing));
+        if (highlight) attron(A_REVERSE);
+
+        if (view_mode == 0) {
+            uint8_t value = ((uint8_t *)addr)[0];
+            char hex_str[4];
+            snprintf(hex_str, sizeof(hex_str), "%02X ", value);
+            addstr(hex_str);
+        } else if (view_mode == 1) {
+            uint16_t value = ((uint16_t *)addr)[0];
+            char hex_str[6];
+            snprintf(hex_str, sizeof(hex_str), "%04X ", (unsigned int)value);
+            addstr(hex_str);
+        } else {
+            uint32_t value = ((uint32_t *)addr)[0];
+            char hex_str[10];
+            snprintf(hex_str, sizeof(hex_str), "%08X ", (unsigned int)value);
+            addstr(hex_str);
+        }
+
+        if (highlight) standend();
+    }
+
+    // Draw ASCII
+    addstr(" ");
+    for (int i = 0; i < 16; i++) {
+        uint32_t addr = row_addr + i;
+        int highlight = (marking && addr >= mark_start && addr <= mark_end);
+
+        if (highlight) attron(A_REVERSE);
+        uint8_t byte = ((uint8_t *)addr)[0];
+        char c = (byte >= 32 && byte < 127) ? byte : '.';
+        addch(c);
+        if (highlight) standend();
+    }
+}
+
 // Visual hex editor with curses interface
 void cmd_visual(uint32_t start_addr) {
     int cursor_x = 0;   // 0-15 (byte column) or 0-7 (word) or 0-3 (dword)
@@ -1187,8 +1248,16 @@ void cmd_visual(uint32_t start_addr) {
                             old_cursor_y = cursor_y;
                             cursor_y--;
                         } else if (top_addr >= 16) {
+                            // Scroll up one row - redraw incrementally
                             top_addr -= 16;
-                            need_full_redraw = 1;
+                            // Scroll screen content down by inserting line at top
+                            move(2, 0);
+                            insertln();
+                            // Redraw the new top row with current selection state
+                            uint32_t current_addr = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
+                            uint32_t range_start = (mark_start < current_addr) ? mark_start : current_addr;
+                            uint32_t range_end = (mark_start < current_addr) ? current_addr : mark_start;
+                            redraw_row(top_addr, top_addr, view_mode, range_start, range_end, marking);
                         }
                     } else if (ch == 166) {  // Shift+Down
                         if (cursor_y < 20) {
@@ -1196,8 +1265,18 @@ void cmd_visual(uint32_t start_addr) {
                             old_cursor_y = cursor_y;
                             cursor_y++;
                         } else {
+                            // Scroll down one row - redraw incrementally
                             top_addr += 16;
-                            need_full_redraw = 1;
+                            // Scroll screen content up by deleting top line
+                            move(2, 0);
+                            deleteln();
+                            // Redraw the new bottom row with current selection state
+                            uint32_t current_addr = top_addr + (cursor_y * 16) + (cursor_x * bytes_per_unit);
+                            uint32_t range_start = (mark_start < current_addr) ? mark_start : current_addr;
+                            uint32_t range_end = (mark_start < current_addr) ? current_addr : mark_start;
+                            uint32_t bottom_row_addr = top_addr + (20 * 16);
+                            move(22, 0);  // Move to bottom row position
+                            redraw_row(bottom_row_addr, top_addr, view_mode, range_start, range_end, marking);
                         }
                     }
                     break;
@@ -1219,10 +1298,14 @@ void cmd_visual(uint32_t start_addr) {
                         }
                         marking = 2;
                     } else {
-                        // Third press: start new mark immediately
+                        // Third press: unhighlight old selection and start new mark
+                        // Unhighlight old confirmed selection incrementally
+                        for (uint32_t addr = mark_start; addr <= mark_end; addr += bytes_per_unit) {
+                            redraw_unit(addr, top_addr, view_mode, 0);
+                        }
+                        // Start new mark
                         mark_start = current_addr;
                         marking = 1;
-                        need_full_redraw = 1;  // Clear old highlighting
                     }
                     break;
             }
