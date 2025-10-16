@@ -53,7 +53,7 @@ USE_NEWLIB ?= 0
 
 # All firmware targets
 FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock
-NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test tetris
+NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test tetris tetris_minimal_test
 
 # Compiler flags for RV32IM
 ARCH = rv32im
@@ -71,6 +71,10 @@ endif
 ifeq ($(TARGET),tetris)
     CFLAGS += -I$(INCURSES_DIR)
     SOURCES = tetris_main.c tetris.c util.c timer_ms.c
+endif
+
+ifeq ($(TARGET),tetris_minimal_test)
+    SOURCES = tetris_minimal_test.c
 endif
 
 # Conditional flags based on newlib usage
