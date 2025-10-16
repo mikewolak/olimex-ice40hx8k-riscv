@@ -28,7 +28,6 @@ HDL_SOURCES = $(HDL_DIR)/picorv32.v \
               $(HDL_DIR)/crc32_gen.v \
               $(HDL_DIR)/sram_driver_new.v \
               $(HDL_DIR)/sram_proc_new.v \
-              $(HDL_DIR)/sram_proc_optimized.v \
               $(HDL_DIR)/firmware_loader.v \
               $(HDL_DIR)/bootloader_rom.v \
               $(HDL_DIR)/mem_controller.v \
