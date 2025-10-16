@@ -1,10 +1,8 @@
 //==============================================================================
-// Mandelbrot Set Explorer with Interactive Zoom
+// Mandelbrot Set - FLOATING-POINT VERSION
 //==============================================================================
+// Uses floating-point for coordinate calculations (software emulated on PicoRV32)
 // Controls:
-//   Arrow keys: Move cursor
-//   S: Start selection mode, move cursor, Enter to confirm
-//   Enter: Zoom to selection
 //   R: Reset to default view
 //   +/-: Adjust max iterations
 //   Q: Quit
@@ -149,10 +147,6 @@ typedef struct {
     double min_real, max_real;
     double min_imag, max_imag;
     int max_iter;
-    int cursor_x, cursor_y;
-    int old_cursor_x, old_cursor_y;
-    int sel_x1, sel_y1, sel_x2, sel_y2;
-    bool selecting;
     uint32_t last_calc_time_ms;
     uint32_t last_total_iters;  // Total iterations in last render
     int screen_rows, screen_cols;  // Track current screen size
@@ -286,89 +280,6 @@ static bool check_terminal_resize(void) {
 }
 
 //==============================================================================
-// Draw cursor and selection box (optimized - no full redraw)
-//==============================================================================
-static void draw_cursor(WINDOW *win) {
-    // Erase old cursor position by using cached render buffer
-    if (state.old_cursor_x >= 0 && state.old_cursor_y >= 0 &&
-        state.old_cursor_y < 200 && state.old_cursor_x < 150) {
-        wmove(win, state.old_cursor_y, state.old_cursor_x);
-        waddch(win, render_buffer[state.old_cursor_y][state.old_cursor_x]);
-    }
-
-    // Draw new cursor
-    wmove(win, state.cursor_y, state.cursor_x);
-    waddch(win, '+' | A_REVERSE);
-
-    // Update old cursor position
-    state.old_cursor_x = state.cursor_x;
-    state.old_cursor_y = state.cursor_y;
-
-    // Draw selection box if selecting
-    if (state.selecting) {
-        int x1 = state.sel_x1 < state.sel_x2 ? state.sel_x1 : state.sel_x2;
-        int x2 = state.sel_x1 < state.sel_x2 ? state.sel_x2 : state.sel_x1;
-        int y1 = state.sel_y1 < state.sel_y2 ? state.sel_y1 : state.sel_y2;
-        int y2 = state.sel_y1 < state.sel_y2 ? state.sel_y2 : state.sel_y1;
-
-        // Draw horizontal lines
-        for (int x = x1; x <= x2; x++) {
-            wmove(win, y1, x);
-            waddch(win, '-' | A_REVERSE);
-            wmove(win, y2, x);
-            waddch(win, '-' | A_REVERSE);
-        }
-
-        // Draw vertical lines
-        for (int y = y1; y <= y2; y++) {
-            wmove(win, y, x1);
-            waddch(win, '|' | A_REVERSE);
-            wmove(win, y, x2);
-            waddch(win, '|' | A_REVERSE);
-        }
-
-        // Draw corners
-        wmove(win, y1, x1); waddch(win, '+' | A_REVERSE);
-        wmove(win, y1, x2); waddch(win, '+' | A_REVERSE);
-        wmove(win, y2, x1); waddch(win, '+' | A_REVERSE);
-        wmove(win, y2, x2); waddch(win, '+' | A_REVERSE);
-    }
-
-    wrefresh(win);
-}
-
-//==============================================================================
-// Zoom to selection
-//==============================================================================
-static void zoom_to_selection(void) {
-    if (!state.selecting) return;
-
-    int x1 = state.sel_x1 < state.sel_x2 ? state.sel_x1 : state.sel_x2;
-    int x2 = state.sel_x1 < state.sel_x2 ? state.sel_x2 : state.sel_x1;
-    int y1 = state.sel_y1 < state.sel_y2 ? state.sel_y1 : state.sel_y2;
-    int y2 = state.sel_y1 < state.sel_y2 ? state.sel_y2 : state.sel_y1;
-
-    // Ensure minimum selection size
-    if ((x2 - x1) < 2 || (y2 - y1) < 2) return;
-
-    // Map screen coordinates to complex plane
-    double real_step = (state.max_real - state.min_real) / SCREEN_WIDTH;
-    double imag_step = (state.max_imag - state.min_imag) / SCREEN_HEIGHT;
-
-    double new_min_real = state.min_real + x1 * real_step;
-    double new_max_real = state.min_real + x2 * real_step;
-    double new_min_imag = state.min_imag + y1 * imag_step;
-    double new_max_imag = state.min_imag + y2 * imag_step;
-
-    state.min_real = new_min_real;
-    state.max_real = new_max_real;
-    state.min_imag = new_min_imag;
-    state.max_imag = new_max_imag;
-
-    state.selecting = false;
-}
-
-//==============================================================================
 // Reset to default view
 //==============================================================================
 static void reset_view(void) {
@@ -376,9 +287,6 @@ static void reset_view(void) {
     state.max_real = 1.0;
     state.min_imag = -1.0;
     state.max_imag = 1.0;
-    state.cursor_x = SCREEN_WIDTH / 2;
-    state.cursor_y = SCREEN_HEIGHT / 2;
-    state.selecting = false;
 }
 
 //==============================================================================
@@ -388,21 +296,19 @@ static void draw_info_bar(void) {
     move(SCREEN_HEIGHT, 0);
     clrtoeol();
 
-    double zoom = 3.5 / (state.max_real - state.min_real);
-
     // Calculate performance metric (Million iterations per second)
     double mips = 0.0;
     if (state.last_calc_time_ms > 0) {
         mips = (double)state.last_total_iters / (double)state.last_calc_time_ms / 1000.0;
     }
 
-    printw("Display: %dx%d | Zoom: %.2fx | Iter: %d | Time: %lums | %.2fM iter/s",
-           g_term_cols, g_term_rows, zoom, state.max_iter,
+    printw("FLOATING-POINT | Display: %dx%d | Iter: %d | Time: %lums | %.2fM iter/s",
+           g_term_cols, g_term_rows, state.max_iter,
            (unsigned long)state.last_calc_time_ms, mips);
 
     move(SCREEN_HEIGHT + 1, 0);
     clrtoeol();
-    printw("Arrows:Move S:Select Enter:Zoom R:Reset +/-:Iter ESC:Cancel Q:Quit");
+    printw("R:Reset +/-:Iter Q:Quit | Performance benchmark");
 
     refresh();
 }
@@ -446,19 +352,16 @@ int main(int argc, char **argv) {
     state.max_iter = MAX_ITER_DEFAULT;
     state.last_calc_time_ms = 0;
     state.last_total_iters = 0;
-    state.old_cursor_x = -1;
-    state.old_cursor_y = -1;
     state.screen_rows = g_term_rows;
     state.screen_cols = g_term_cols;
 
     // Create main window
     WINDOW *mandel_win = newwin(SCREEN_HEIGHT, SCREEN_WIDTH, 0, 0);
 
-    printf("Drawing initial view...\r\n");
+    printf("Drawing initial view (FLOATING-POINT)...\r\n");
 
     // Draw initial mandelbrot
     draw_mandelbrot(mandel_win);
-    draw_cursor(mandel_win);
     draw_info_bar();
 
     bool running = true;
@@ -482,12 +385,6 @@ int main(int argc, char **argv) {
                     wclear(stdscr);
                     mandel_win = newwin(SCREEN_HEIGHT, SCREEN_WIDTH, 0, 0);
 
-                    // Reset cursor if out of bounds
-                    if (state.cursor_x >= SCREEN_WIDTH) state.cursor_x = SCREEN_WIDTH - 1;
-                    if (state.cursor_y >= SCREEN_HEIGHT) state.cursor_y = SCREEN_HEIGHT - 1;
-                    state.old_cursor_x = -1;
-                    state.old_cursor_y = -1;
-
                     needs_redraw = true;
                 }
             }
@@ -496,8 +393,6 @@ int main(int argc, char **argv) {
         int ch = getch();
 
         if (ch != ERR) {
-            bool cursor_moved = false;
-
             switch (ch) {
                 // Quit
                 case 'q':
@@ -536,84 +431,14 @@ int main(int argc, char **argv) {
                         needs_redraw = true;
                     }
                     break;
-
-                // Zoom to selection
-                case '\n':
-                case '\r':
-                    if (state.selecting) {
-                        zoom_to_selection();
-                        needs_redraw = true;
-                    }
-                    break;
-
-                // Arrow key navigation
-                case KEY_UP:
-                    if (state.cursor_y > 0) {
-                        state.cursor_y--;
-                        cursor_moved = true;
-                    }
-                    break;
-
-                case KEY_DOWN:
-                    if (state.cursor_y < SCREEN_HEIGHT - 1) {
-                        state.cursor_y++;
-                        cursor_moved = true;
-                    }
-                    break;
-
-                case KEY_LEFT:
-                    if (state.cursor_x > 0) {
-                        state.cursor_x--;
-                        cursor_moved = true;
-                    }
-                    break;
-
-                case KEY_RIGHT:
-                    if (state.cursor_x < SCREEN_WIDTH - 1) {
-                        state.cursor_x++;
-                        cursor_moved = true;
-                    }
-                    break;
-
-                // 'S' key to start/toggle selection mode
-                case 's':
-                case 'S':
-                    if (!state.selecting) {
-                        // Start selection
-                        state.selecting = true;
-                        state.sel_x1 = state.cursor_x;
-                        state.sel_y1 = state.cursor_y;
-                        state.sel_x2 = state.cursor_x;
-                        state.sel_y2 = state.cursor_y;
-                    } else {
-                        // Update second corner of selection
-                        state.sel_x2 = state.cursor_x;
-                        state.sel_y2 = state.cursor_y;
-                    }
-                    needs_redraw = true;
-                    break;
-
-                // Escape cancels selection
-                case 27:  // ESC
-                    state.selecting = false;
-                    needs_redraw = true;
-                    break;
             }
 
-            // Redraw if cursor moved or selection changed
+            // Redraw if needed
             if (needs_redraw) {
-                // Full redraw needed (zoom, reset, etc)
                 wclear(mandel_win);
                 draw_mandelbrot(mandel_win);
-                state.old_cursor_x = -1;  // Force cursor redraw
-                state.old_cursor_y = -1;
-                draw_cursor(mandel_win);
                 draw_info_bar();
                 needs_redraw = false;
-            } else if (cursor_moved) {
-                // Just cursor moved - optimized path (no full redraw)
-                draw_cursor(mandel_win);
-                wrefresh(mandel_win);
             }
         }
 
@@ -625,11 +450,11 @@ int main(int argc, char **argv) {
     wclear(stdscr);
     endwin();
 
-    printf("\r\n\r\nMandelbrot Explorer exited.\r\n");
-    printf("Final view: [%.6f, %.6f] x [%.6f, %.6f]\r\n",
-           state.min_real, state.max_real, state.min_imag, state.max_imag);
+    printf("\r\n\r\nMandelbrot Explorer (FLOATING-POINT) exited.\r\n");
     printf("Max iterations: %d\r\n", state.max_iter);
     printf("Last calculation time: %lu ms\r\n", (unsigned long)state.last_calc_time_ms);
+    printf("Performance: %.2f M iter/s\r\n",
+           (double)state.last_total_iters / (double)state.last_calc_time_ms / 1000.0);
 
     while(1);  // Hang for embedded system
     return 0;

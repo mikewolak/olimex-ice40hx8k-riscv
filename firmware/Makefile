@@ -53,7 +53,7 @@ USE_NEWLIB ?= 0
 
 # All firmware targets
 FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock
-NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test mandelbrot mandelbrot_fast
+NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test mandelbrot_float mandelbrot_fixed
 
 # Compiler flags for RV32IM
 ARCH = rv32im
@@ -67,16 +67,16 @@ ifeq ($(TARGET),hexedit)
     CFLAGS += -I$(MICRORL_DIR) -I$(SIMPLE_UPLOAD_DIR) -I$(INCURSES_DIR)
 endif
 
-# Mandelbrot uses incurses and timer
-ifeq ($(TARGET),mandelbrot)
+# Mandelbrot_float uses incurses and timer (floating-point version)
+ifeq ($(TARGET),mandelbrot_float)
     CFLAGS += -I$(INCURSES_DIR)
-    SOURCES = mandelbrot.c timer_ms.c
+    SOURCES = mandelbrot_float.c timer_ms.c
 endif
 
-# Mandelbrot_fast uses incurses and timer (optimized fixed-point version)
-ifeq ($(TARGET),mandelbrot_fast)
+# Mandelbrot_fixed uses incurses and timer (optimized fixed-point version)
+ifeq ($(TARGET),mandelbrot_fixed)
     CFLAGS += -I$(INCURSES_DIR)
-    SOURCES = mandelbrot_fast.c timer_ms.c
+    SOURCES = mandelbrot_fixed.c timer_ms.c
 endif
 
 # Conditional flags based on newlib usage
@@ -107,16 +107,16 @@ ifeq ($(TARGET),hexedit)
     $(info Building hexedit with Simple Upload and incurses support)
 endif
 
-# Add incurses object for mandelbrot
-ifeq ($(TARGET),mandelbrot)
+# Add incurses object for mandelbrot_float
+ifeq ($(TARGET),mandelbrot_float)
     LIBS := $(INCURSES_OBJ) $(LIBS)
-    $(info Building mandelbrot with incurses support)
+    $(info Building mandelbrot_float (FLOATING-POINT) with incurses support)
 endif
 
-# Add incurses object for mandelbrot_fast
-ifeq ($(TARGET),mandelbrot_fast)
+# Add incurses object for mandelbrot_fixed
+ifeq ($(TARGET),mandelbrot_fixed)
     LIBS := $(INCURSES_OBJ) $(LIBS)
-    $(info Building mandelbrot_fast (OPTIMIZED) with incurses support)
+    $(info Building mandelbrot_fixed (FIXED-POINT) with incurses support)
 endif
 
 # Output files
