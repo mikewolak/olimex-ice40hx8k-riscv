@@ -150,9 +150,11 @@ typedef struct {
     double min_imag, max_imag;
     int max_iter;
     int cursor_x, cursor_y;
+    int old_cursor_x, old_cursor_y;
     int sel_x1, sel_y1, sel_x2, sel_y2;
     bool selecting;
     uint32_t last_calc_time_ms;
+    int screen_rows, screen_cols;  // Track current screen size
 } mandelbrot_state;
 
 static mandelbrot_state state;
@@ -245,12 +247,45 @@ static void draw_mandelbrot(WINDOW *win) {
 }
 
 //==============================================================================
-// Draw cursor and selection box
+// Check for terminal resize
+//==============================================================================
+static bool check_terminal_resize(void) {
+    int old_rows = g_term_rows;
+    int old_cols = g_term_cols;
+
+    if (query_terminal_size()) {
+        if (g_term_rows != old_rows || g_term_cols != old_cols) {
+            return true;  // Size changed
+        }
+    }
+    return false;
+}
+
+//==============================================================================
+// Draw cursor and selection box (optimized - no full redraw)
 //==============================================================================
 static void draw_cursor(WINDOW *win) {
-    // Draw cursor
+    // Erase old cursor position by redrawing that cell
+    if (state.old_cursor_x >= 0 && state.old_cursor_y >= 0) {
+        double real_step = (state.max_real - state.min_real) / SCREEN_WIDTH;
+        double imag_step = (state.max_imag - state.min_imag) / SCREEN_HEIGHT;
+        double real = state.min_real + state.old_cursor_x * real_step;
+        double imag = state.min_imag + state.old_cursor_y * imag_step;
+
+        int iter = mandelbrot_iterations(real, imag, state.max_iter);
+        const char* ch = iter_to_char(iter, state.max_iter);
+
+        wmove(win, state.old_cursor_y, state.old_cursor_x);
+        wprintw(win, "%s", ch);
+    }
+
+    // Draw new cursor
     wmove(win, state.cursor_y, state.cursor_x);
     waddch(win, '+' | A_REVERSE);
+
+    // Update old cursor position
+    state.old_cursor_x = state.cursor_x;
+    state.old_cursor_y = state.cursor_y;
 
     // Draw selection box if selecting
     if (state.selecting) {
@@ -389,6 +424,10 @@ int main(int argc, char **argv) {
     reset_view();
     state.max_iter = MAX_ITER_DEFAULT;
     state.last_calc_time_ms = 0;
+    state.old_cursor_x = -1;
+    state.old_cursor_y = -1;
+    state.screen_rows = g_term_rows;
+    state.screen_cols = g_term_cols;
 
     // Create main window
     WINDOW *mandel_win = newwin(SCREEN_HEIGHT, SCREEN_WIDTH, 0, 0);
@@ -402,9 +441,36 @@ int main(int argc, char **argv) {
 
     bool running = true;
     bool needs_redraw = false;
+    int loop_counter = 0;
 
     // Main loop
     while (running) {
+        // Check for terminal resize every 100 iterations
+        loop_counter++;
+        if (loop_counter >= 100) {
+            loop_counter = 0;
+            if (check_terminal_resize()) {
+                // Terminal size changed - need to recreate window and redraw
+                if (state.screen_rows != g_term_rows || state.screen_cols != g_term_cols) {
+                    state.screen_rows = g_term_rows;
+                    state.screen_cols = g_term_cols;
+
+                    // Recreate window with new size
+                    delwin(mandel_win);
+                    wclear(stdscr);
+                    mandel_win = newwin(SCREEN_HEIGHT, SCREEN_WIDTH, 0, 0);
+
+                    // Reset cursor if out of bounds
+                    if (state.cursor_x >= SCREEN_WIDTH) state.cursor_x = SCREEN_WIDTH - 1;
+                    if (state.cursor_y >= SCREEN_HEIGHT) state.cursor_y = SCREEN_HEIGHT - 1;
+                    state.old_cursor_x = -1;
+                    state.old_cursor_y = -1;
+
+                    needs_redraw = true;
+                }
+            }
+        }
+
         int ch = getch();
 
         if (ch != ERR) {
@@ -513,18 +579,19 @@ int main(int argc, char **argv) {
             }
 
             // Redraw if cursor moved or selection changed
-            if (cursor_moved || needs_redraw) {
-                if (needs_redraw) {
-                    wclear(mandel_win);
-                    draw_mandelbrot(mandel_win);
-                    needs_redraw = false;
-                } else {
-                    // Just redraw the last frame (removes old cursor)
-                    wrefresh(mandel_win);
-                }
-
+            if (needs_redraw) {
+                // Full redraw needed (zoom, reset, etc)
+                wclear(mandel_win);
+                draw_mandelbrot(mandel_win);
+                state.old_cursor_x = -1;  // Force cursor redraw
+                state.old_cursor_y = -1;
                 draw_cursor(mandel_win);
                 draw_info_bar();
+                needs_redraw = false;
+            } else if (cursor_moved) {
+                // Just cursor moved - optimized path (no full redraw)
+                draw_cursor(mandel_win);
+                wrefresh(mandel_win);
             }
         }
 
