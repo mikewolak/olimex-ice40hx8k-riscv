@@ -318,7 +318,7 @@ module ice40_picorv32_top (
     );
 
     // SRAM Processor for CPU (via Memory Controller)
-    sram_proc_optimized sram_proc_cpu (
+    sram_proc_new sram_proc_cpu (
         .clk(clk),
         .resetn(cpu_resetn),
         .start(mem_ctrl_sram_start),
