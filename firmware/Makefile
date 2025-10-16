@@ -53,7 +53,7 @@ USE_NEWLIB ?= 0
 
 # All firmware targets
 FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock
-NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test tetris tetris_minimal_test incurses_test
+NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test mandelbrot
 
 # Compiler flags for RV32IM
 ARCH = rv32im
@@ -67,19 +67,10 @@ ifeq ($(TARGET),hexedit)
     CFLAGS += -I$(MICRORL_DIR) -I$(SIMPLE_UPLOAD_DIR) -I$(INCURSES_DIR)
 endif
 
-# Tetris uses incurses and has multiple source files
-ifeq ($(TARGET),tetris)
+# Mandelbrot uses incurses and timer
+ifeq ($(TARGET),mandelbrot)
     CFLAGS += -I$(INCURSES_DIR)
-    SOURCES = tetris_main.c tetris.c util.c timer_ms.c
-endif
-
-ifeq ($(TARGET),tetris_minimal_test)
-    SOURCES = tetris_minimal_test.c timer_ms.c
-endif
-
-ifeq ($(TARGET),incurses_test)
-    CFLAGS += -I$(INCURSES_DIR)
-    SOURCES = incurses_test.c timer_ms.c
+    SOURCES = mandelbrot.c timer_ms.c
 endif
 
 # Conditional flags based on newlib usage
@@ -110,15 +101,10 @@ ifeq ($(TARGET),hexedit)
     $(info Building hexedit with Simple Upload and incurses support)
 endif
 
-# Add incurses object for tetris and incurses_test
-ifeq ($(TARGET),tetris)
+# Add incurses object for mandelbrot
+ifeq ($(TARGET),mandelbrot)
     LIBS := $(INCURSES_OBJ) $(LIBS)
-    $(info Building tetris with incurses support)
-endif
-
-ifeq ($(TARGET),incurses_test)
-    LIBS := $(INCURSES_OBJ) $(LIBS)
-    $(info Building incurses_test with incurses support)
+    $(info Building mandelbrot with incurses support)
 endif
 
 # Output files
@@ -223,10 +209,7 @@ ifeq ($(TARGET),hexedit)
 	$(MAKE) $(MICRORL_OBJ)
 	$(MAKE) $(INCURSES_OBJ)
 endif
-ifeq ($(TARGET),tetris)
-	$(MAKE) $(INCURSES_OBJ)
-endif
-ifeq ($(TARGET),incurses_test)
+ifeq ($(TARGET),mandelbrot)
 	$(MAKE) $(INCURSES_OBJ)
 endif
 ifeq ($(USE_NEWLIB),1)
