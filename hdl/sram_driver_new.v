@@ -1,14 +1,12 @@
 //==============================================================================
 // Olimex iCE40HX8K-EVB RISC-V Platform
-// sram_driver_new.v - SRAM Physical Interface Driver (2-CYCLE OPTIMIZED)
+// sram_driver_new.v - SRAM Physical Interface Driver
 //
 // Copyright (c) October 2025 Michael Wolak
 // Email: mikewolak@gmail.com, mike@epromfoundry.com
 //
 // NOT FOR COMMERCIAL USE
 // Educational and research purposes only
-//
-// OPTIMIZATION: Reduced from 5-cycle to 2-cycle access for 2.5x speedup
 //==============================================================================
 
 module sram_driver_new (
@@ -31,12 +29,14 @@ module sram_driver_new (
     output reg sram_we_n
 );
 
-    // 2-Cycle FSM States
-    localparam IDLE     = 2'd0;  // Waiting for transaction
-    localparam ACTIVE   = 2'd1;  // Address + control signals asserted
-    localparam COMPLETE = 2'd2;  // Data capture (read) or write completion
+    // States
+    localparam IDLE     = 3'd0;
+    localparam SETUP    = 3'd1;  // Address/data setup
+    localparam ACTIVE   = 3'd2;  // Assert WE for write, sample data for read
+    localparam RECOVERY = 3'd3;  // Write recovery / read completion
+    localparam COOLDOWN = 3'd4;  // Mandatory 1-cycle gap after transaction
 
-    reg [1:0] state;
+    reg [2:0] state;
     reg [15:0] data_out_reg;
     reg data_oe;
     reg [17:0] addr_reg;
@@ -69,125 +69,131 @@ module sram_driver_new (
                     data_oe <= 1'b0;
 
                     if (valid) begin
-                        // Latch inputs for stability
+                        // Latch address and data
                         addr_reg <= addr[17:0];
                         wdata_reg <= wdata;
                         we_reg <= we;
 
                         // synthesis translate_off
-                        $display("[SRAM_2CYC] IDLE->ACTIVE: addr=0x%05x data=0x%04x we=%b t=%0t",
-                                 addr[17:0], wdata, we, $time);
+                        $display("[SRAM_DRIVER] IDLE->SETUP: addr=0x%05x data=0x%04x we=%b",
+                                 addr[17:0], wdata, we);
                         // synthesis translate_on
 
-                        state <= ACTIVE;
+                        state <= SETUP;
                     end
+                end
+
+                SETUP: begin
+                    // Cycle 1: Address setup, assert CS
+                    // tAS = 0ns min (we have 10ns)
+                    sram_addr <= addr_reg;
+                    sram_cs_n <= 1'b0;
+
+                    if (we_reg) begin
+                        // WRITE: Setup data on bus, keep WE and OE high
+                        data_out_reg <= wdata_reg;
+                        data_oe <= 1'b1;
+                        sram_we_n <= 1'b1;  // Keep high during setup
+                        sram_oe_n <= 1'b1;  // OE must be high during write
+
+                        // synthesis translate_off
+                        $display("[SRAM_DRIVER] SETUP(WRITE): addr=0x%05x data=0x%04x",
+                                 addr_reg, wdata_reg);
+                        // synthesis translate_on
+                    end else begin
+                        // READ: Assert OE, keep WE high
+                        sram_oe_n <= 1'b0;
+                        sram_we_n <= 1'b1;
+                        data_oe <= 1'b0;
+
+                        // synthesis translate_off
+                        $display("[SRAM_DRIVER] SETUP(READ): addr=0x%05x", addr_reg);
+                        // synthesis translate_on
+                    end
+
+                    state <= ACTIVE;
                 end
 
                 ACTIVE: begin
-                    // Cycle 1: Assert all control signals simultaneously
-                    // This meets datasheet timing:
-                    //   - tAS = 0ns min (address setup before WE/OE) - NOT REQUIRED
-                    //   - tAA = 10ns max (address to data valid)
-                    //   - tWP = 7ns min (write pulse width)
-
-                    sram_addr <= addr_reg;
-                    sram_cs_n <= 1'b0;  // Enable chip
-
-                    if (we_reg) begin
-                        // WRITE: Assert address, data, CS, and WE simultaneously
-                        // Data is stable from this cycle through COMPLETE (40ns total)
-                        // This exceeds tDW = 5ns min and tDH = 0ns min
-                        data_out_reg <= wdata_reg;
-                        data_oe <= 1'b1;
-                        sram_we_n <= 1'b0;  // Assert WE immediately (will be 20ns+ pulse)
-                        sram_oe_n <= 1'b1;  // OE must be HIGH during writes
-
-                        // synthesis translate_off
-                        $display("[SRAM_2CYC] ACTIVE(WRITE): addr=0x%05x data=0x%04x WE=0 t=%0t",
-                                 addr_reg, wdata_reg, $time);
-                        // synthesis translate_on
-                    end else begin
-                        // READ: Assert address, CS, and OE simultaneously
-                        // Data will be valid by end of COMPLETE cycle (40ns total)
-                        // This exceeds tAA = 10ns max
-                        sram_oe_n <= 1'b0;  // Enable output immediately
-                        sram_we_n <= 1'b1;  // WE must be HIGH during reads
-                        data_oe <= 1'b0;    // Tri-state our output
-
-                        // synthesis translate_off
-                        $display("[SRAM_2CYC] ACTIVE(READ): addr=0x%05x OE=0 t=%0t",
-                                 addr_reg, $time);
-                        // synthesis translate_on
-                    end
-
-                    state <= COMPLETE;
-                end
-
-                COMPLETE: begin
-                    // Cycle 2: Complete transaction
+                    // Cycle 2: Write pulse or read data sampling
+                    sram_cs_n <= 1'b0;
                     sram_addr <= addr_reg;  // Keep address stable
 
                     if (we_reg) begin
-                        // WRITE COMPLETION:
-                        // WE has been asserted for 20ns (ACTIVE cycle)
-                        // Now deassert WE while keeping data stable
-                        // This provides tWP = 20ns (exceeds 7ns min)
-                        // and tDH = 20ns (exceeds 0ns min)
-                        sram_cs_n <= 1'b0;      // Keep CS active
-                        sram_we_n <= 1'b1;      // Deassert WE (rising edge latches data)
-                        sram_oe_n <= 1'b1;      // Keep OE high
-                        data_out_reg <= wdata_reg;  // Maintain data stability
-                        data_oe <= 1'b1;        // Keep driving bus this cycle
-                        ready <= 1'b1;          // Signal completion
+                        // WRITE: Assert WE while data is stable
+                        // tWP = 7ns min (we have 10ns)
+                        // tDW = 5ns min (data was setup in previous cycle, stable for 10ns+)
+                        sram_we_n <= 1'b0;
+                        sram_oe_n <= 1'b1;
+                        data_out_reg <= wdata_reg;
+                        data_oe <= 1'b1;
 
                         // synthesis translate_off
-                        $display("[SRAM_2CYC] COMPLETE(WRITE): WE=1 (write latched) ready=1 t=%0t", $time);
+                        $display("[SRAM_DRIVER] ACTIVE(WRITE): WE asserted, addr=0x%05x data=0x%04x",
+                                 addr_reg, wdata_reg);
                         // synthesis translate_on
                     end else begin
-                        // READ COMPLETION:
-                        // Data has had 20ns (ACTIVE) + settling time to become valid
-                        // This exceeds tAA = 10ns max, so data is stable
-                        // Sample data now
-                        sram_cs_n <= 1'b0;      // Keep CS active
-                        sram_oe_n <= 1'b0;      // Keep OE active
-                        sram_we_n <= 1'b1;      // Keep WE high
-                        rdata <= sram_data;     // Sample data from SRAM
-                        ready <= 1'b1;          // Signal completion
+                        // READ: Sample data from SRAM
+                        // tAA = 10ns max (we have 20ns from address setup)
+                        sram_oe_n <= 1'b0;
+                        sram_we_n <= 1'b1;
+                        rdata <= sram_data;
 
                         // synthesis translate_off
-                        $display("[SRAM_2CYC] COMPLETE(READ): data=0x%04x ready=1 t=%0t",
-                                sram_data, $time);
+                        $display("[SRAM_DRIVER] ACTIVE(READ): Sampling data=0x%04x", sram_data);
                         // synthesis translate_on
                     end
 
-                    state <= IDLE;  // Return directly to IDLE (no cooldown needed)
+                    state <= RECOVERY;
+                end
+
+                RECOVERY: begin
+                    // Cycle 3: Recovery cycle
+                    if (we_reg) begin
+                        // WRITE: Deassert WE, maintain data hold
+                        // tDH = 0ns min (we hold for full cycle = 10ns)
+                        // tWR = 0ns min (we have 10ns recovery)
+                        sram_we_n <= 1'b1;
+                        sram_cs_n <= 1'b1;
+                        sram_oe_n <= 1'b1;
+                        data_oe <= 1'b0;  // Release bus
+
+                        // synthesis translate_off
+                        $display("[SRAM_DRIVER] RECOVERY(WRITE): Complete");
+                        // synthesis translate_on
+                    end else begin
+                        // READ: Complete, data already sampled
+                        sram_cs_n <= 1'b1;
+                        sram_oe_n <= 1'b1;
+                        sram_we_n <= 1'b1;
+
+                        // synthesis translate_off
+                        $display("[SRAM_DRIVER] RECOVERY(READ): Complete, rdata=0x%04x", rdata);
+                        // synthesis translate_on
+                    end
+
+                    ready <= 1'b1;
+                    state <= COOLDOWN;  // Go to cooldown, not directly to IDLE
+                end
+
+                COOLDOWN: begin
+                    // Mandatory 1-cycle gap - allows master to deassert valid
+                    ready <= 1'b0;
+                    sram_cs_n <= 1'b1;
+                    sram_oe_n <= 1'b1;
+                    sram_we_n <= 1'b1;
+                    data_oe <= 1'b0;
+
+                    // synthesis translate_off
+                    $display("[SRAM_DRIVER] COOLDOWN");
+                    // synthesis translate_on
+
+                    state <= IDLE;
                 end
 
                 default: state <= IDLE;
             endcase
         end
     end
-
-    // Timing Analysis Comments:
-    //
-    // K6R4016V1D-TC10 Requirements vs 2-Cycle Implementation:
-    //
-    // READS:
-    //   tRC  (Read Cycle)        = 10ns min → We provide 40ns (2 cycles)   ✓
-    //   tAA  (Address Access)    = 10ns max → We allow 40ns                ✓
-    //   tOE  (OE to Valid)       = 5ns max  → We allow 40ns                ✓
-    //   tOH  (Output Hold)       = 3ns min  → We provide 20ns              ✓
-    //   tHZ  (CS High to Hi-Z)   = 5ns max  → Next cycle transition        ✓
-    //
-    // WRITES:
-    //   tWC  (Write Cycle)       = 10ns min → We provide 40ns (2 cycles)   ✓
-    //   tAS  (Address Setup)     = 0ns min  → We provide 0ns (simultaneous)✓
-    //   tAW  (Address Valid)     = 7ns min  → We provide 40ns              ✓
-    //   tWP  (Write Pulse)       = 7ns min  → We provide 20ns              ✓
-    //   tDW  (Data Setup)        = 5ns min  → We provide 40ns              ✓
-    //   tDH  (Data Hold)         = 0ns min  → We provide 20ns              ✓
-    //   tWR  (Write Recovery)    = 0ns min  → Next cycle ready             ✓
-    //
-    // All timing requirements met with 2-4x margin at 50MHz (20ns period)
 
 endmodule
