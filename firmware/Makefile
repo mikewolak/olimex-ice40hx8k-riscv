@@ -221,7 +221,10 @@ ifeq ($(TARGET),hexedit)
 	$(MAKE) $(MICRORL_OBJ)
 	$(MAKE) $(INCURSES_OBJ)
 endif
-ifeq ($(TARGET),mandelbrot)
+ifeq ($(TARGET),mandelbrot_float)
+	$(MAKE) $(INCURSES_OBJ)
+endif
+ifeq ($(TARGET),mandelbrot_fixed)
 	$(MAKE) $(INCURSES_OBJ)
 endif
 ifeq ($(USE_NEWLIB),1)
