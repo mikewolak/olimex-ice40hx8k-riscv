@@ -154,10 +154,15 @@ typedef struct {
     int sel_x1, sel_y1, sel_x2, sel_y2;
     bool selecting;
     uint32_t last_calc_time_ms;
+    uint32_t last_total_iters;  // Total iterations in last render
     int screen_rows, screen_cols;  // Track current screen size
 } mandelbrot_state;
 
 static mandelbrot_state state;
+
+// Render buffer - stores the rendered ASCII characters
+// Max terminal size we support: 200x150
+static char render_buffer[200][150];
 
 //==============================================================================
 // Fixed-point Mandelbrot (faster than floating point)
@@ -224,6 +229,7 @@ static const char* iter_to_char(int iter, int max_iter) {
 //==============================================================================
 static void draw_mandelbrot(WINDOW *win) {
     uint32_t start_time = get_millis();
+    uint32_t total_iters = 0;
 
     double real_step = (state.max_real - state.min_real) / SCREEN_WIDTH;
     double imag_step = (state.max_imag - state.min_imag) / SCREEN_HEIGHT;
@@ -236,13 +242,20 @@ static void draw_mandelbrot(WINDOW *win) {
             double imag = state.min_imag + row * imag_step;
 
             int iter = mandelbrot_iterations(real, imag, state.max_iter);
+            total_iters += iter;
             const char* ch = iter_to_char(iter, state.max_iter);
 
             wprintw(win, "%s", ch);
+
+            // Store in render buffer for fast cursor redraw
+            if (row < 200 && col < 150) {
+                render_buffer[row][col] = ch[0];
+            }
         }
     }
 
     state.last_calc_time_ms = get_millis() - start_time;
+    state.last_total_iters = total_iters;
     wrefresh(win);
 }
 
@@ -265,18 +278,11 @@ static bool check_terminal_resize(void) {
 // Draw cursor and selection box (optimized - no full redraw)
 //==============================================================================
 static void draw_cursor(WINDOW *win) {
-    // Erase old cursor position by redrawing that cell
-    if (state.old_cursor_x >= 0 && state.old_cursor_y >= 0) {
-        double real_step = (state.max_real - state.min_real) / SCREEN_WIDTH;
-        double imag_step = (state.max_imag - state.min_imag) / SCREEN_HEIGHT;
-        double real = state.min_real + state.old_cursor_x * real_step;
-        double imag = state.min_imag + state.old_cursor_y * imag_step;
-
-        int iter = mandelbrot_iterations(real, imag, state.max_iter);
-        const char* ch = iter_to_char(iter, state.max_iter);
-
+    // Erase old cursor position by using cached render buffer
+    if (state.old_cursor_x >= 0 && state.old_cursor_y >= 0 &&
+        state.old_cursor_y < 200 && state.old_cursor_x < 150) {
         wmove(win, state.old_cursor_y, state.old_cursor_x);
-        wprintw(win, "%s", ch);
+        waddch(win, render_buffer[state.old_cursor_y][state.old_cursor_x]);
     }
 
     // Draw new cursor
@@ -371,13 +377,17 @@ static void draw_info_bar(void) {
     move(SCREEN_HEIGHT, 0);
     clrtoeol();
 
-    double center_real = (state.min_real + state.max_real) / 2.0;
-    double center_imag = (state.min_imag + state.max_imag) / 2.0;
     double zoom = 3.5 / (state.max_real - state.min_real);
 
-    printw("Center: %.10f%+.10fi | Zoom: %.2fx | Iter: %d | Calc: %lums",
-           center_real, center_imag, zoom, state.max_iter,
-           (unsigned long)state.last_calc_time_ms);
+    // Calculate performance metric (Million iterations per second)
+    double mips = 0.0;
+    if (state.last_calc_time_ms > 0) {
+        mips = (double)state.last_total_iters / (double)state.last_calc_time_ms / 1000.0;
+    }
+
+    printw("Display: %dx%d | Zoom: %.2fx | Iter: %d | Time: %lums | %.2fM iter/s",
+           g_term_cols, g_term_rows, zoom, state.max_iter,
+           (unsigned long)state.last_calc_time_ms, mips);
 
     move(SCREEN_HEIGHT + 1, 0);
     clrtoeol();
@@ -424,6 +434,7 @@ int main(int argc, char **argv) {
     reset_view();
     state.max_iter = MAX_ITER_DEFAULT;
     state.last_calc_time_ms = 0;
+    state.last_total_iters = 0;
     state.old_cursor_x = -1;
     state.old_cursor_y = -1;
     state.screen_rows = g_term_rows;
