@@ -74,7 +74,7 @@ ifeq ($(TARGET),tetris)
 endif
 
 ifeq ($(TARGET),tetris_minimal_test)
-    SOURCES = tetris_minimal_test.c
+    SOURCES = tetris_minimal_test.c timer_ms.c
 endif
 
 # Conditional flags based on newlib usage
