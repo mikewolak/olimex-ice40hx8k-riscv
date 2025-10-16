@@ -165,16 +165,25 @@ _mbedserial_puts(const char *str)
  *      RISC-V / Embedded UART driver (direct hardware access)
  *      Bypasses stdio to get unbuffered character input for curses
  *-----------------------------------------------------------------------*/
-// External UART functions (defined in hexedit.c)
+// External UART functions (defined in application)
 extern char uart_getc(void);
 extern void uart_putc(char c);
 extern int uart_getc_available(void);
+
+// Global timeout setting for getch()
+static int g_getch_timeout = -1;  // -1 = blocking, 0 = non-blocking
 
 static int
 _embeddedserial_getc(int timeout_ms)
 {
     /* Direct UART access for unbuffered input */
-    (void)timeout_ms;  // Ignore timeout for now
+
+    // If non-blocking (timeout <= 0) and no data available, return ERR
+    if (timeout_ms <= 0 && !uart_getc_available()) {
+        return ERR;
+    }
+
+    // Block until data available (or return immediately if available)
     return (int)uart_getc();
 }
 
@@ -324,7 +333,7 @@ init_pair(unsigned pair, uint8_t fg, uint8_t bg)
 int
 getch(void)
 {
-    int ch = DRV_GETC(-1);
+    int ch = DRV_GETC(g_getch_timeout);
     /* FIXME if G(keypad), recognise ESC sequences */
     /* FIXME if G(echo), output character */
     return ch;
@@ -375,8 +384,8 @@ cbreak(void)
 int
 timeout(int delay)
 {
-    /* Timeout not supported in embedded - always non-blocking */
-    (void)delay;
+    /* Set timeout for getch() - stored globally for embedded driver */
+    g_getch_timeout = delay;
     return OK;
 }
 

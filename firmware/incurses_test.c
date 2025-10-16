@@ -24,6 +24,10 @@ char uart_getc(void) {
     return UART_RX_DATA & 0xFF;
 }
 
+int uart_getc_available(void) {
+    return UART_RX_STATUS & 0x01;
+}
+
 // IRQ Handler - routes timer interrupts
 void irq_handler(uint32_t irqs) {
     if (irqs & (1 << 0)) {
