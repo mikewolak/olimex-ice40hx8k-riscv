@@ -229,25 +229,13 @@ int main(int argc, char **argv)
   printf("Tetris starting...\r\n");
   printf("argc=%d, argv=%p\r\n", argc, (void*)argv);
 
-  // Load file if given a filename.
-  if (argc >= 2) {
-    printf("Loading saved game: %s\r\n", argv[1]);
-    FILE *f = fopen(argv[1], "r");
-    if (f == NULL) {
-      perror("tetris");
-      exit(EXIT_FAILURE);
-    }
-    tg = tg_load(f);
-    fclose(f);
-  } else {
-    // Otherwise create new game.
-    printf("Creating new game (22x10)...\r\n");
-    tg = tg_create(22, 10);
-    printf("Game created: tg=%p\r\n", (void*)tg);
-    if (tg == NULL) {
-      printf("ERROR: tg_create returned NULL!\r\n");
-      while(1);
-    }
+  // Create new game (no save/load on embedded hardware)
+  printf("Creating new game (22x10)...\r\n");
+  tg = tg_create(22, 10);
+  printf("Game created: tg=%p\r\n", (void*)tg);
+  if (tg == NULL) {
+    printf("ERROR: tg_create returned NULL!\r\n");
+    while(1);
   }
 
   // Initialize millisecond timer (must be before ncurses for accurate timing)
@@ -317,10 +305,6 @@ int main(int argc, char **argv)
       break;
     case 'b':
       boss_mode();
-      move = TM_NONE;
-      break;
-    case 's':
-      save(tg, board);
       move = TM_NONE;
       break;
     case ' ':
