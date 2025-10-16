@@ -409,12 +409,8 @@ module sram_proc_optimized (
                 end
 
                 STATE_CRC_READ_HIGH: begin
-                    // Wait for valid to go low
-                    state <= STATE_CRC_SETUP_HIGH;
-                end
-
-                STATE_CRC_SETUP_HIGH: begin
-                    // Setup high read address
+                    // Wait for valid to go low and setup high read address
+                    sram_valid <= 1'b0;
                     sram_addr_16 <= crc_current_addr[18:1] + 18'd1;  // Next 18-bit word address
                     sram_we <= 1'b0;
                     state <= STATE_CRC_CALC;
