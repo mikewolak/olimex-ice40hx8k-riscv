@@ -200,7 +200,7 @@ _embeddedserial_puts(const char *str)
 #define DRV_FLUSHIN()
 #define DRV_PUTC _embeddedserial_putc
 #define DRV_PUTS _embeddedserial_puts
-#define DRV_FLUSH()
+#define DRV_FLUSH() fflush(stdout)
 
 #else
 /*-----------------------------------------------------------------------
