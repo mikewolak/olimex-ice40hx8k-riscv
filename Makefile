@@ -52,7 +52,10 @@ ICEPACK = icepack
 ICETIME = icetime
 
 # Synthesis Options
+# Yosys 0.58+ ABC9 is too aggressive - removes 401 cells and breaks design
+# Use -abc9 with Yosys 0.24 or omit for Yosys 0.58+
 SYNTH_OPTS = -abc9
+# SYNTH_OPTS =   # Uncomment to disable ABC9 for Yosys 0.58+
 
 # PnR Options (use heap placer for high utilization designs)
 PNR_DEVICE = hx8k
