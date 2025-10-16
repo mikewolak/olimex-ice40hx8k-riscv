@@ -75,13 +75,14 @@ module sram_proc_optimized (
 
     localparam STATE_CRC_INIT = 5'd8;
     localparam STATE_CRC_READ_LOW = 5'd9;
-    localparam STATE_CRC_READ_HIGH = 5'd10;
-    localparam STATE_CRC_CALC = 5'd11;
+    localparam STATE_CRC_WAIT = 5'd10;
+    localparam STATE_CRC_SETUP_HIGH = 5'd11;
+    localparam STATE_CRC_CALC = 5'd12;
 
     // Read-Modify-Write states for byte/halfword writes
-    localparam STATE_WRITE_RMW_READ_LOW = 5'd12;
-    localparam STATE_WRITE_RMW_READ_HIGH = 5'd13;
-    localparam STATE_WRITE_RMW_MERGE = 5'd14;
+    localparam STATE_WRITE_RMW_READ_LOW = 5'd13;
+    localparam STATE_WRITE_RMW_READ_HIGH = 5'd14;
+    localparam STATE_WRITE_RMW_MERGE = 5'd15;
 
     reg [4:0] state;
     reg [7:0] current_cmd;
@@ -396,7 +397,7 @@ module sram_proc_optimized (
                 end
 
                 STATE_CRC_READ_LOW: begin
-                    // Start or continue CRC loop - setup address
+                    // Start or continue CRC loop - setup address and read low word
                     if (!sram_valid) begin
                         sram_addr_16 <= crc_current_addr[18:1];  // 18-bit word address
                         sram_we <= 1'b0;
@@ -404,13 +405,18 @@ module sram_proc_optimized (
                     end else if (sram_ready) begin
                         temp_low_word <= sram_rdata_16;
                         sram_valid <= 1'b0;  // Clear valid immediately when ready seen
-                        state <= STATE_CRC_READ_HIGH;
+                        state <= STATE_CRC_WAIT;
                     end
                 end
 
-                STATE_CRC_READ_HIGH: begin
-                    // Wait for valid to go low and setup high read address
-                    sram_valid <= 1'b0;
+                STATE_CRC_WAIT: begin
+                    // Wait for valid to go low before setting up high address
+                    // This extra cycle is CRITICAL for proper handshaking in CRC loops
+                    state <= STATE_CRC_SETUP_HIGH;
+                end
+
+                STATE_CRC_SETUP_HIGH: begin
+                    // Setup high read address
                     sram_addr_16 <= crc_current_addr[18:1] + 18'd1;  // Next 18-bit word address
                     sram_we <= 1'b0;
                     state <= STATE_CRC_CALC;
@@ -484,10 +490,16 @@ module sram_proc_optimized (
     //   Cycle 7:  STATE_IDLE
     //
     // Key changes:
-    //   - Eliminated redundant WAIT1/SETUP_HIGH/WAIT2 states
+    //   - Eliminated redundant WAIT1/SETUP_HIGH/WAIT2 states for READ/WRITE
     //   - Assert valid+address immediately (edge-aligned with driver)
     //   - Single STATE_WAIT between low/high accesses
     //   - Signal done directly in final state (no separate DONE cycle)
+    //
+    // CRC32 Operation:
+    //   - Retained original 3-state sequence for CRC loop iterations
+    //   - CRC_WAIT and CRC_SETUP_HIGH states are CRITICAL for proper
+    //     handshaking between consecutive SRAM accesses in the CRC loop
+    //   - Without these states, address setup violations occur
     //
     // Performance impact on 50MHz PicoRV32:
     //   - Memory access: 220ns → 140ns (36% faster)
