@@ -20,6 +20,7 @@
 #include <time.h>
 
 #include "tetris.h"
+#include "timer_ms.h"
 
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
@@ -429,14 +430,13 @@ void tg_init(tetris_game *obj, int rows, int cols)
   obj->level = 0;
   obj->ticks_till_gravity = GRAVITY_LEVEL[obj->level];
   obj->lines_remaining = LINES_PER_LEVEL;
-  srand(time(NULL));
+  srand(get_millis());  // Use millisecond timer instead of time() for embedded
   tg_new_falling(obj);
   tg_new_falling(obj);
   obj->stored.typ = -1;
   obj->stored.ori = 0;
   obj->stored.loc.row = 0;
   obj->next.loc.col = obj->cols/2 - 2;
-  printf("%d", obj->falling.loc.col);
 }
 
 tetris_game *tg_create(int rows, int cols)

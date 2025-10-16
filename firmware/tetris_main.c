@@ -229,6 +229,11 @@ int main(int argc, char **argv)
   printf("Tetris starting...\r\n");
   printf("argc=%d, argv=%p\r\n", argc, (void*)argv);
 
+  // Initialize millisecond timer (must be before tg_create which uses get_millis)
+  printf("Initializing timer...\r\n");
+  timer_ms_init();
+  printf("Timer initialized\r\n");
+
   // Create new game (no save/load on embedded hardware)
   printf("Creating new game (22x10)...\r\n");
   tg = tg_create(22, 10);
@@ -237,11 +242,6 @@ int main(int argc, char **argv)
     printf("ERROR: tg_create returned NULL!\r\n");
     while(1);
   }
-
-  // Initialize millisecond timer (must be before ncurses for accurate timing)
-  printf("Initializing timer...\r\n");
-  timer_ms_init();
-  printf("Timer initialized\r\n");
 
   // NCURSES initialization:
   printf("Initializing ncurses...\r\n");
