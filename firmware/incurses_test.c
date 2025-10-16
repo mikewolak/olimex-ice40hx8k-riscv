@@ -86,11 +86,10 @@ int main(int argc, char **argv) {
         uint32_t seconds = total_seconds % 60;
 
         wmove(win, 3, 1);
-        wprintw(win, "%02u:%02u:%02u", hours, minutes, seconds);
+        wprintw(win, "%02u:%02u:%02u        ", hours, minutes, seconds);
         wrefresh(win);
 
-        sleep_milli(100);  // Update every 100ms
-
+        // No sleep - tight loop like hexedit
         int ch = getch();
         if (ch == 'q') {
             break;
