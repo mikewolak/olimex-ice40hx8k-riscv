@@ -223,8 +223,12 @@ int main(int argc, char **argv)
   bool running = true;
   WINDOW *board, *next, *hold, *score;
 
+  printf("Tetris starting...\n");
+  printf("argc=%d, argv=%p\n", argc, (void*)argv);
+
   // Load file if given a filename.
   if (argc >= 2) {
+    printf("Loading saved game: %s\n", argv[1]);
     FILE *f = fopen(argv[1], "r");
     if (f == NULL) {
       perror("tetris");
@@ -234,26 +238,41 @@ int main(int argc, char **argv)
     fclose(f);
   } else {
     // Otherwise create new game.
+    printf("Creating new game (22x10)...\n");
     tg = tg_create(22, 10);
+    printf("Game created: tg=%p\n", (void*)tg);
+    if (tg == NULL) {
+      printf("ERROR: tg_create returned NULL!\n");
+      while(1);
+    }
   }
 
   // Initialize millisecond timer (must be before ncurses for accurate timing)
+  printf("Initializing timer...\n");
   timer_ms_init();
+  printf("Timer initialized\n");
 
   // NCURSES initialization:
+  printf("Initializing ncurses...\n");
   initscr();             // initialize curses
+  printf("  initscr() OK\n");
   cbreak();              // pass key presses to program, but not signals
   noecho();              // don't echo key presses to screen
   keypad(stdscr, TRUE);  // allow arrow keys
   timeout(0);            // no blocking on getch()
   curs_set(0);           // set the cursor to invisible
+  printf("  basic setup OK\n");
   init_colors();         // setup tetris colors
+  printf("  colors OK\n");
 
   // Create windows for each section of the interface.
+  printf("Creating windows...\n");
   board = newwin(tg->rows + 2, 2 * tg->cols + 2, 0, 0);
+  printf("  board window OK\n");
   next  = newwin(6, 10, 0, 2 * (tg->cols + 1) + 1);
   hold  = newwin(6, 10, 7, 2 * (tg->cols + 1) + 1);
   score = newwin(6, 10, 14, 2 * (tg->cols + 1 ) + 1);
+  printf("All windows created, entering game loop...\n");
 
   // Game loop
   while (running) {
