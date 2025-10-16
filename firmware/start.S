@@ -117,6 +117,11 @@ clear_bss:
     j clear_bss
 done_clear_bss:
 
+    /* Set up argc and argv for main(int argc, char **argv) */
+    /* In bare-metal: argc=0, argv=NULL */
+    li a0, 0        // argc = 0
+    li a1, 0        // argv = NULL
+
     /* Call main function */
     call main
 
