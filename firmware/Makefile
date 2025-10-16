@@ -53,7 +53,7 @@ USE_NEWLIB ?= 0
 
 # All firmware targets
 FIRMWARE_TARGETS = led_blink interactive button_demo timer_clock
-NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test mandelbrot
+NEWLIB_TARGETS = printf_test uart_echo_test heap_test math_test algo_test mandelbrot mandelbrot_fast
 
 # Compiler flags for RV32IM
 ARCH = rv32im
@@ -71,6 +71,12 @@ endif
 ifeq ($(TARGET),mandelbrot)
     CFLAGS += -I$(INCURSES_DIR)
     SOURCES = mandelbrot.c timer_ms.c
+endif
+
+# Mandelbrot_fast uses incurses and timer (optimized fixed-point version)
+ifeq ($(TARGET),mandelbrot_fast)
+    CFLAGS += -I$(INCURSES_DIR)
+    SOURCES = mandelbrot_fast.c timer_ms.c
 endif
 
 # Conditional flags based on newlib usage
@@ -105,6 +111,12 @@ endif
 ifeq ($(TARGET),mandelbrot)
     LIBS := $(INCURSES_OBJ) $(LIBS)
     $(info Building mandelbrot with incurses support)
+endif
+
+# Add incurses object for mandelbrot_fast
+ifeq ($(TARGET),mandelbrot_fast)
+    LIBS := $(INCURSES_OBJ) $(LIBS)
+    $(info Building mandelbrot_fast (OPTIMIZED) with incurses support)
 endif
 
 # Output files
