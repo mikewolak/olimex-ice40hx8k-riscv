@@ -54,7 +54,7 @@ config PICORV32_REPO
 
 config PICORV32_COMMIT
     string "PicoRV32 commit/tag"
-    default "master"
+    default "main"
     help
       Specific commit hash or tag for reproducibility
 

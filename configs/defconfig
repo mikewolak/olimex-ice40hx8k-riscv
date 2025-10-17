@@ -13,7 +13,7 @@ CONFIG_FPGA_TOOLS_SYSTEM=y
 # PicoRV32 Core Configuration
 #
 CONFIG_PICORV32_REPO="https://github.com/YosysHQ/picorv32.git"
-CONFIG_PICORV32_COMMIT="master"
+CONFIG_PICORV32_COMMIT="main"
 
 # ISA Configuration (RV32IM - no compressed)
 CONFIG_ENABLE_MUL=y
