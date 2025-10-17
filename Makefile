@@ -22,7 +22,30 @@ else
     PREFIX := riscv64-unknown-elf-
 endif
 
-all: help
+all: toolchain-check bootloader firmware-all bitstream upload-tool
+	@echo ""
+	@echo "========================================="
+	@echo "✓ Build Complete!"
+	@echo "========================================="
+	@echo ""
+	@echo "Build artifacts:"
+	@echo ""
+	@echo "Bootloader:"
+	@ls -lh bootloader/bootloader.hex 2>/dev/null || echo "  Not built"
+	@echo ""
+	@echo "FPGA Bitstream:"
+	@ls -lh build/ice40_picorv32.bin 2>/dev/null || echo "  Not built"
+	@echo ""
+	@echo "Firmware (.bin files):"
+	@find firmware -name "*.bin" -exec ls -lh {} \; 2>/dev/null | sed 's/^/  /' || echo "  None built"
+	@echo ""
+	@echo "Upload Tool:"
+	@ls -lh tools/uploader/fw_upload 2>/dev/null || echo "  Not built"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Program FPGA:    iceprog build/ice40_picorv32.bin"
+	@echo "  2. Upload firmware: tools/uploader/fw_upload -p /dev/ttyUSB0 firmware/<name>.bin"
+	@echo ""
 
 help:
 	@echo "========================================="
@@ -266,8 +289,12 @@ firmware-all: fw-led-blink fw-timer-clock fw-hexedit fw-heap-test fw-algo-test f
 	@ls -lh firmware/*.hex 2>/dev/null || echo "No firmware built yet"
 
 upload-tool:
-	@echo "TODO: Implement upload tool build"
-	@echo "Will build tools/upload/fw_upload.c"
+	@echo "========================================="
+	@echo "Building Firmware Upload Tool"
+	@echo "========================================="
+	@$(MAKE) -C tools/uploader
+	@echo ""
+	@echo "✓ Upload tool built: tools/uploader/fw_upload"
 
 # ============================================================================
 # HDL Synthesis and Bitstream Generation
