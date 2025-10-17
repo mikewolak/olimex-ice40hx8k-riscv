@@ -15,6 +15,7 @@ echo "Arch: $ARCH"
 echo ""
 
 mkdir -p "$INSTALL_DIR"
+mkdir -p downloads
 
 # ============================================================================
 # RISC-V Toolchain
@@ -57,10 +58,20 @@ tar -xzf downloads/riscv-toolchain.tar.gz -C "$INSTALL_DIR" --strip-components=1
 echo ""
 echo "Downloading OSS CAD Suite..."
 
+# Get latest release from GitHub API
+LATEST_RELEASE=$(curl -s https://api.github.com/repos/YosysHQ/oss-cad-suite-build/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+
+if [ -z "$LATEST_RELEASE" ]; then
+    echo "ERROR: Could not fetch latest oss-cad-suite release"
+    exit 1
+fi
+
+echo "Latest OSS CAD Suite release: $LATEST_RELEASE"
+
 case "$OS" in
     Linux)
         if [ "$ARCH" = "x86_64" ]; then
-            FPGA_URL="https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2024-10-09/oss-cad-suite-linux-x64-20241009.tgz"
+            FPGA_URL="https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${LATEST_RELEASE}/oss-cad-suite-linux-x64-${LATEST_RELEASE//-/}.tgz"
         else
             echo "ERROR: No pre-built OSS CAD Suite for $OS $ARCH"
             exit 1
@@ -68,9 +79,9 @@ case "$OS" in
         ;;
     Darwin)
         if [ "$ARCH" = "arm64" ]; then
-            FPGA_URL="https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2024-10-09/oss-cad-suite-darwin-arm64-20241009.tgz"
+            FPGA_URL="https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${LATEST_RELEASE}/oss-cad-suite-darwin-arm64-${LATEST_RELEASE//-/}.tgz"
         else
-            FPGA_URL="https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2024-10-09/oss-cad-suite-darwin-x64-20241009.tgz"
+            FPGA_URL="https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${LATEST_RELEASE}/oss-cad-suite-darwin-x64-${LATEST_RELEASE//-/}.tgz"
         fi
         ;;
     *)

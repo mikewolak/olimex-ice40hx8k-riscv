@@ -1,0 +1,138 @@
+PROPRIETARY LICENSE AGREEMENT
+Olimex iCE40HX8K PicoRV32 RISC-V System
+
+Copyright (c) October 2025 Michael Wolak
+All Rights Reserved
+
+Contact:
+  Michael Wolak
+  mikewolak@gmail.com
+  mike@epromfoundry.com
+
+================================================================================
+                    NOT FOR COMMERCIAL USE
+          EDUCATIONAL AND RESEARCH PURPOSES ONLY
+================================================================================
+
+GRANT OF LICENSE
+
+This software and associated documentation files (the "Software") are provided
+under the following terms and conditions:
+
+1. PERMITTED USES
+
+   Subject to the terms of this license, you are granted a non-exclusive,
+   non-transferable, revocable license to use the Software solely for:
+
+   a) Personal educational purposes
+   b) Academic research and study
+   c) Non-commercial experimentation and learning
+   d) Teaching in academic institutions
+
+2. PROHIBITED USES
+
+   You may NOT:
+
+   a) Use the Software for any commercial purpose
+   b) Use the Software in any product or service offered for sale or profit
+   c) Incorporate the Software into commercial products or systems
+   d) Redistribute the Software for profit or commercial gain
+   e) Remove or modify this license or copyright notices
+   f) Sublicense, sell, rent, or lease the Software
+   g) Use the Software in production environments
+   h) Use the Software to provide commercial services
+   i) Claim ownership or authorship of the Software
+
+3. REDISTRIBUTION
+
+   Redistribution of the Software in source or binary form is permitted ONLY
+   under the following conditions:
+
+   a) It is for non-commercial, educational, or research purposes only
+   b) This complete license and copyright notice is included
+   c) No fee is charged for the redistribution (except reasonable media costs)
+   d) Any modifications are clearly marked as such
+   e) The name of the copyright holder is not used to endorse derivative works
+      without prior written permission
+
+4. MODIFICATIONS
+
+   You may modify the Software for your own educational or research use, but:
+
+   a) Modified versions remain subject to this license
+   b) You must clearly indicate that changes have been made
+   c) Modified versions may not be distributed for commercial purposes
+   d) The original copyright notice must be retained
+
+5. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+   WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF,
+   OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+6. LIMITATION OF LIABILITY
+
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY DIRECT, INDIRECT,
+   INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+   OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+   LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+   EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+7. TERMINATION
+
+   This license is effective until terminated. Your rights under this license
+   will terminate automatically without notice if you fail to comply with any
+   term of this license. Upon termination, you must destroy all copies of the
+   Software in your possession.
+
+8. COMMERCIAL LICENSING
+
+   If you wish to use the Software for commercial purposes, you must obtain a
+   separate commercial license from the copyright holder. Contact:
+
+   Michael Wolak
+   mikewolak@gmail.com
+   mike@epromfoundry.com
+
+9. GOVERNING LAW
+
+   This license shall be governed by and construed in accordance with the laws
+   of the United States and the jurisdiction in which the copyright holder
+   resides, without regard to its conflict of law provisions.
+
+10. THIRD-PARTY COMPONENTS
+
+    This Software incorporates third-party components that are subject to their
+    own license terms:
+
+    - PicoRV32 CPU Core: Copyright (c) Clifford Wolf, ISC License
+    - Newlib C Library: Various authors, BSD-style licenses
+    - microrl: Eugene Samoylov, BSD 3-Clause License
+
+    See the respective component directories and files for their specific
+    license terms. Those components remain under their original licenses and
+    are not subject to this proprietary license.
+
+================================================================================
+
+BY USING THE SOFTWARE, YOU ACKNOWLEDGE THAT YOU HAVE READ THIS LICENSE,
+UNDERSTAND IT, AND AGREE TO BE BOUND BY ITS TERMS AND CONDITIONS.
+
+IF YOU DO NOT AGREE TO THE TERMS OF THIS LICENSE, YOU ARE NOT AUTHORIZED TO
+USE, COPY, MODIFY, OR DISTRIBUTE THE SOFTWARE.
+
+================================================================================
+
+For questions about this license or to inquire about commercial licensing:
+
+Michael Wolak
+mikewolak@gmail.com
+mike@epromfoundry.com
+
+================================================================================

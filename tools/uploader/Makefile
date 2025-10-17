@@ -26,10 +26,18 @@ SRC = fw_upload.c
 
 .PHONY: all mac linux win-gcc win-vs clean help
 
-# Default target
+# Auto-detect platform and build
 all:
-	@echo "Please specify target: make [mac|linux|win-gcc|win-vs]"
-	@echo "Run 'make help' for more information"
+	@if [ "$$(uname)" = "Linux" ]; then \
+		$(MAKE) linux; \
+	elif [ "$$(uname)" = "Darwin" ]; then \
+		$(MAKE) mac; \
+	else \
+		echo "ERROR: Unsupported platform: $$(uname)"; \
+		echo "Please specify target: make [mac|linux|win-gcc|win-vs]"; \
+		echo "Run 'make help' for more information"; \
+		exit 1; \
+	fi
 
 # macOS build
 mac: $(SRC)

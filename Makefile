@@ -3,17 +3,17 @@
 
 .PHONY: all help clean distclean mrproper menuconfig defconfig generate
 .PHONY: bootloader firmware upload-tool test-generators
-.PHONY: toolchain-riscv toolchain-fpga toolchain-download toolchain-check
+.PHONY: toolchain-riscv toolchain-fpga toolchain-download toolchain-check verify-platform
 .PHONY: fetch-picorv32 build-newlib check-newlib
 .PHONY: fw-led-blink fw-timer-clock fw-hexedit fw-heap-test fw-algo-test
 .PHONY: fw-mandelbrot-fixed fw-mandelbrot-float firmware-all firmware-bare firmware-newlib newlib-if-needed
-.PHONY: bitstream synth pnr pnr-sa pack timing
+.PHONY: bitstream synth pnr pnr-sa pack timing artifacts
 
 # Detect number of cores
 NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 export NPROC
 
-# Toolchain detection
+# Toolchain detection and PATH setup
 ifneq (,$(wildcard build/toolchain/bin/riscv64-unknown-elf-gcc))
     PREFIX := build/toolchain/bin/riscv64-unknown-elf-
 else ifneq (,$(wildcard build/toolchain/bin/riscv32-unknown-elf-gcc))
@@ -22,29 +22,20 @@ else
     PREFIX := riscv64-unknown-elf-
 endif
 
-all: toolchain-check bootloader firmware-bare newlib-if-needed firmware-newlib bitstream upload-tool
+# Toolchain paths will be set explicitly in each target that needs them
+
+all: toolchain-check bootloader firmware-bare newlib-if-needed firmware-newlib bitstream upload-tool artifacts
 	@echo ""
 	@echo "========================================="
 	@echo "✓ Build Complete!"
 	@echo "========================================="
 	@echo ""
-	@echo "Build artifacts:"
-	@echo ""
-	@echo "Bootloader:"
-	@ls -lh bootloader/bootloader.hex 2>/dev/null || echo "  Not built"
-	@echo ""
-	@echo "FPGA Bitstream:"
-	@ls -lh build/ice40_picorv32.bin 2>/dev/null || echo "  Not built"
-	@echo ""
-	@echo "Firmware (.bin files):"
-	@find firmware -name "*.bin" -exec ls -lh {} \; 2>/dev/null | sed 's/^/  /' || echo "  None built"
-	@echo ""
-	@echo "Upload Tool:"
-	@ls -lh tools/uploader/fw_upload 2>/dev/null || echo "  Not built"
+	@echo "Build artifacts collected in artifacts/ directory"
+	@echo "See artifacts/build-report.txt for detailed build information"
 	@echo ""
 	@echo "Next steps:"
-	@echo "  1. Program FPGA:    iceprog build/ice40_picorv32.bin"
-	@echo "  2. Upload firmware: tools/uploader/fw_upload -p /dev/ttyUSB0 firmware/<name>.bin"
+	@echo "  1. Program FPGA:    iceprog artifacts/gateware/ice40_picorv32.bin"
+	@echo "  2. Upload firmware: artifacts/host/fw_upload -p /dev/ttyUSB0 artifacts/firmware/<name>.bin"
 	@echo ""
 
 help:
@@ -136,7 +127,15 @@ savedefconfig:
 # Toolchain Management
 # ============================================================================
 
-toolchain-check:
+verify-platform:
+	@if [ -f scripts/verify-platform.sh ]; then \
+		chmod +x scripts/verify-platform.sh; \
+		bash scripts/verify-platform.sh; \
+	else \
+		echo "⚠ Warning: scripts/verify-platform.sh not found, skipping platform verification"; \
+	fi
+
+toolchain-check: verify-platform
 	@echo "========================================="
 	@echo "Checking for required tools"
 	@echo "========================================="
@@ -342,7 +341,12 @@ synth: bootloader
 	echo "Tool:    Yosys"; \
 	echo "Target:  iCE40HX8K"; \
 	echo ""; \
-	yosys -p "synth_ice40 -top ice40_picorv32_top -json build/ice40_picorv32.json $$SYNTH_OPTS" \
+	YOSYS_CMD="yosys"; \
+	if [ -f $(CURDIR)/downloads/oss-cad-suite/bin/yosys ]; then \
+		YOSYS_CMD="$(CURDIR)/downloads/oss-cad-suite/bin/yosys"; \
+		echo "Using: $$YOSYS_CMD"; \
+	fi; \
+	$$YOSYS_CMD -p "synth_ice40 -top ice40_picorv32_top -json build/ice40_picorv32.json $$SYNTH_OPTS" \
 		hdl/picorv32.v \
 		hdl/uart.v \
 		hdl/circular_buffer.v \
@@ -374,9 +378,15 @@ pnr: synth
 	echo "PCF:     $$PCF_FILE"; \
 	echo "Placer:  heap --seed 1"; \
 	echo ""; \
-	nextpnr-ice40 --hx8k --package ct256 \
+	NEXTPNR_CMD="nextpnr-ice40"; \
+	if [ -f $(CURDIR)/downloads/oss-cad-suite/bin/nextpnr-ice40 ]; then \
+		NEXTPNR_CMD="$(CURDIR)/downloads/oss-cad-suite/bin/nextpnr-ice40"; \
+		echo "Using: $$NEXTPNR_CMD"; \
+	fi; \
+	$$NEXTPNR_CMD --hx8k --package ct256 \
 		--json build/ice40_picorv32.json \
 		--pcf "$$PCF_FILE" \
+		--sdc hdl/ice40_picorv32.sdc \
 		--asc build/ice40_picorv32.asc \
 		--placer heap --seed 1
 	@echo ""
@@ -401,6 +411,7 @@ pnr-sa: synth
 	nextpnr-ice40 --hx8k --package ct256 \
 		--json build/ice40_picorv32.json \
 		--pcf "$$PCF_FILE" \
+		--sdc hdl/ice40_picorv32.sdc \
 		--asc build/ice40_picorv32.asc \
 		--placer sa --ignore-loops
 	@echo ""
@@ -422,10 +433,16 @@ pnr-seeds: synth
 	echo "PCF:     $$PCF_FILE"; \
 	echo "Useful for nextpnr-0.9+ with 90%+ utilization"; \
 	echo ""; \
+	NEXTPNR_CMD="nextpnr-ice40"; \
+	if [ -f $(CURDIR)/downloads/oss-cad-suite/bin/nextpnr-ice40 ]; then \
+		NEXTPNR_CMD="$(CURDIR)/downloads/oss-cad-suite/bin/nextpnr-ice40"; \
+		echo "Using: $$NEXTPNR_CMD"; \
+	fi; \
 	for seed in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
 		echo "Trying seed $$seed..."; \
-		if nextpnr-ice40 --hx8k --package ct256 \
+		if $$NEXTPNR_CMD --hx8k --package ct256 \
 		   --json build/ice40_picorv32.json --pcf "$$PCF_FILE" \
+		   --sdc hdl/ice40_picorv32.sdc \
 		   --asc build/ice40_picorv32.asc --placer heap --seed $$seed; then \
 			echo "✓ Success with seed $$seed!"; \
 			break; \
@@ -461,12 +478,162 @@ timing: pnr
 	@grep -A5 "Max frequency" build/timing_report.txt || cat build/timing_report.txt
 
 # ============================================================================
+# Artifacts Collection
+# ============================================================================
+
+artifacts:
+	@echo "========================================="
+	@echo "Collecting Build Artifacts"
+	@echo "========================================="
+	@echo ""
+	@# Create directory structure
+	@rm -rf artifacts
+	@mkdir -p artifacts/host artifacts/gateware artifacts/firmware
+	@echo "✓ Created artifacts directory structure"
+	@echo ""
+	@# Copy host tools
+	@if [ -f tools/uploader/fw_upload ]; then \
+		cp tools/uploader/fw_upload artifacts/host/; \
+		echo "✓ Copied fw_upload to artifacts/host/"; \
+	else \
+		echo "⚠ fw_upload not found"; \
+	fi
+	@echo ""
+	@# Copy gateware
+	@if [ -f build/ice40_picorv32.bin ]; then \
+		cp build/ice40_picorv32.bin artifacts/gateware/; \
+		echo "✓ Copied bitstream to artifacts/gateware/"; \
+	else \
+		echo "⚠ Bitstream not found"; \
+	fi
+	@echo ""
+	@# Copy firmware binaries
+	@if [ -n "$$(find firmware -name '*.bin' 2>/dev/null)" ]; then \
+		find firmware -name "*.bin" -exec cp {} artifacts/firmware/ \;; \
+		echo "✓ Copied firmware binaries to artifacts/firmware/"; \
+		find artifacts/firmware/ -name "*.bin" -exec basename {} \; | sed 's/^/  - /'; \
+	else \
+		echo "⚠ No firmware binaries found"; \
+	fi
+	@echo ""
+	@# Generate build report
+	@echo "Generating build report..."
+	@echo "==========================================" > artifacts/build-report.txt
+	@echo "Olimex iCE40HX8K PicoRV32 Build Report" >> artifacts/build-report.txt
+	@echo "==========================================" >> artifacts/build-report.txt
+	@echo "" >> artifacts/build-report.txt
+	@echo "Build Timestamp: $$(date)" >> artifacts/build-report.txt
+	@echo "Build Host: $$(hostname)" >> artifacts/build-report.txt
+	@echo "Build Platform: $$(uname -s) $$(uname -r)" >> artifacts/build-report.txt
+	@echo "Architecture: $$(uname -m)" >> artifacts/build-report.txt
+	@echo "CPU Cores: $$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 'Unknown')" >> artifacts/build-report.txt
+	@echo "Total RAM: $$(free -h 2>/dev/null | awk '/^Mem:/ {print $$2}' || sysctl -n hw.memsize 2>/dev/null | awk '{printf "%.1fG", $$1/1024/1024/1024}' || echo 'Unknown')" >> artifacts/build-report.txt
+	@echo "" >> artifacts/build-report.txt
+	@echo "==========================================" >> artifacts/build-report.txt
+	@echo "⚠️  NOT FOR COMMERCIAL USE ⚠️" >> artifacts/build-report.txt
+	@echo "EDUCATIONAL AND RESEARCH PURPOSES ONLY" >> artifacts/build-report.txt
+	@echo "==========================================" >> artifacts/build-report.txt
+	@echo "" >> artifacts/build-report.txt
+	@echo "Copyright (c) October 2025 Michael Wolak" >> artifacts/build-report.txt
+	@echo "Email: mikewolak@gmail.com, mike@epromfoundry.com" >> artifacts/build-report.txt
+	@echo "" >> artifacts/build-report.txt
+	@echo "==========================================" >> artifacts/build-report.txt
+	@echo "Tool Versions" >> artifacts/build-report.txt
+	@echo "==========================================" >> artifacts/build-report.txt
+	@echo "" >> artifacts/build-report.txt
+	@# Detect which Yosys to use
+	@if [ -f downloads/oss-cad-suite/bin/yosys ]; then \
+		echo "Yosys: $$(downloads/oss-cad-suite/bin/yosys --version 2>&1 | head -1)" >> artifacts/build-report.txt; \
+	elif command -v yosys >/dev/null 2>&1; then \
+		echo "Yosys: $$(yosys --version 2>&1 | head -1)" >> artifacts/build-report.txt; \
+	else \
+		echo "Yosys: Not found" >> artifacts/build-report.txt; \
+	fi
+	@# Detect which NextPNR to use
+	@if [ -f downloads/oss-cad-suite/bin/nextpnr-ice40 ]; then \
+		echo "NextPNR: $$(downloads/oss-cad-suite/bin/nextpnr-ice40 --version 2>&1 | head -1)" >> artifacts/build-report.txt; \
+	elif command -v nextpnr-ice40 >/dev/null 2>&1; then \
+		echo "NextPNR: $$(nextpnr-ice40 --version 2>&1 | head -1)" >> artifacts/build-report.txt; \
+	else \
+		echo "NextPNR: Not found" >> artifacts/build-report.txt; \
+	fi
+	@# Detect which icetime to use (icetime doesn't have --version, just check if it exists)
+	@if [ -f downloads/oss-cad-suite/bin/icetime ]; then \
+		echo "IceTime: Found (from oss-cad-suite)" >> artifacts/build-report.txt; \
+	elif command -v icetime >/dev/null 2>&1; then \
+		echo "IceTime: Found (system)" >> artifacts/build-report.txt; \
+	else \
+		echo "IceTime: Not found" >> artifacts/build-report.txt; \
+	fi
+	@# RISC-V GCC version
+	@if [ -f build/toolchain/bin/riscv64-unknown-elf-gcc ]; then \
+		echo "RISC-V GCC: $$(build/toolchain/bin/riscv64-unknown-elf-gcc --version 2>&1 | head -1)" >> artifacts/build-report.txt; \
+	elif [ -f build/toolchain/bin/riscv32-unknown-elf-gcc ]; then \
+		echo "RISC-V GCC: $$(build/toolchain/bin/riscv32-unknown-elf-gcc --version 2>&1 | head -1)" >> artifacts/build-report.txt; \
+	elif command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then \
+		echo "RISC-V GCC: $$(riscv64-unknown-elf-gcc --version 2>&1 | head -1)" >> artifacts/build-report.txt; \
+	else \
+		echo "RISC-V GCC: Not found" >> artifacts/build-report.txt; \
+	fi
+	@echo "" >> artifacts/build-report.txt
+	@echo "==========================================" >> artifacts/build-report.txt
+	@echo "FPGA Utilization" >> artifacts/build-report.txt
+	@echo "==========================================" >> artifacts/build-report.txt
+	@echo "" >> artifacts/build-report.txt
+	@if [ -f build/ice40_picorv32.asc ]; then \
+		if [ -f downloads/oss-cad-suite/bin/icebox_stat ]; then \
+			downloads/oss-cad-suite/bin/icebox_stat build/ice40_picorv32.asc >> artifacts/build-report.txt 2>&1; \
+		elif command -v icebox_stat >/dev/null 2>&1; then \
+			icebox_stat build/ice40_picorv32.asc >> artifacts/build-report.txt 2>&1; \
+		else \
+			echo "Utilization data not available (icebox_stat not found)" >> artifacts/build-report.txt; \
+		fi; \
+	else \
+		echo "Utilization data not available (build/ice40_picorv32.asc not found)" >> artifacts/build-report.txt; \
+	fi
+	@echo "" >> artifacts/build-report.txt
+	@echo "==========================================" >> artifacts/build-report.txt
+	@echo "Timing Analysis" >> artifacts/build-report.txt
+	@echo "==========================================" >> artifacts/build-report.txt
+	@echo "" >> artifacts/build-report.txt
+	@if [ -f build/timing_report.txt ]; then \
+		cat build/timing_report.txt >> artifacts/build-report.txt; \
+	else \
+		echo "Timing report not available" >> artifacts/build-report.txt; \
+	fi
+	@echo "" >> artifacts/build-report.txt
+	@echo "==========================================" >> artifacts/build-report.txt
+	@echo "Build Artifacts Tree" >> artifacts/build-report.txt
+	@echo "==========================================" >> artifacts/build-report.txt
+	@echo "" >> artifacts/build-report.txt
+	@if command -v tree >/dev/null 2>&1; then \
+		tree artifacts >> artifacts/build-report.txt; \
+	else \
+		find artifacts -type f -o -type d | sort | sed 's|^artifacts|.|' >> artifacts/build-report.txt; \
+	fi
+	@echo "" >> artifacts/build-report.txt
+	@echo "✓ Build report generated: artifacts/build-report.txt"
+	@echo ""
+	@# Create tar.gz archive with version and date
+	@GIT_TAG=$$(git describe --tags --always 2>/dev/null || echo "0.1-initial"); \
+	BUILD_DATE=$$(date +%Y%m%d-%H%M%S); \
+	ARCHIVE_NAME="olimex-ice40hx8k-picorv32-$${GIT_TAG}-$${BUILD_DATE}"; \
+	echo "Creating release archive: $${ARCHIVE_NAME}.tar.gz"; \
+	tar -czf artifacts/$${ARCHIVE_NAME}.tar.gz -C artifacts host gateware firmware build-report.txt 2>/dev/null || tar -czf artifacts/$${ARCHIVE_NAME}.tar.gz artifacts/host artifacts/gateware artifacts/firmware artifacts/build-report.txt; \
+	echo "✓ Release archive created: artifacts/$${ARCHIVE_NAME}.tar.gz"; \
+	ls -lh artifacts/$${ARCHIVE_NAME}.tar.gz
+	@echo ""
+	@echo "========================================="
+	@echo "✓ Artifacts Collection Complete"
+	@echo "========================================="
+
+# ============================================================================
 # Clean targets
 # ============================================================================
 
 clean:
 	@echo "Cleaning build artifacts..."
-	@rm -rf build/ deploy/
+	@rm -rf build/ deploy/ artifacts/
 	@echo "✓ Clean complete"
 
 distclean: clean
