@@ -406,6 +406,42 @@ pnr-sa: synth
 	@echo ""
 	@echo "✓ Place and route complete: build/ice40_picorv32.asc"
 
+# Alternative: Try multiple seeds (for tight designs at ~90% utilization)
+pnr-seeds: synth
+	@echo "========================================="
+	@echo "Place and Route: Trying Multiple Seeds"
+	@echo "========================================="
+	@. ./.config && \
+	PCF_FILE="$$CONFIG_PCF_FILE"; \
+	if [ -z "$$PCF_FILE" ]; then \
+		PCF_FILE="hdl/ice40_picorv32.pcf"; \
+	fi; \
+	echo "Tool:    NextPNR-iCE40"; \
+	echo "Device:  hx8k"; \
+	echo "Package: ct256"; \
+	echo "PCF:     $$PCF_FILE"; \
+	echo "Useful for nextpnr-0.9+ with 90%+ utilization"; \
+	echo ""; \
+	for seed in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
+		echo "Trying seed $$seed..."; \
+		if nextpnr-ice40 --hx8k --package ct256 \
+		   --json build/ice40_picorv32.json --pcf "$$PCF_FILE" \
+		   --asc build/ice40_picorv32.asc --placer heap --seed $$seed; then \
+			echo "✓ Success with seed $$seed!"; \
+			break; \
+		else \
+			echo "✗ Seed $$seed failed, trying next..."; \
+		fi; \
+	done
+	@if [ -f build/ice40_picorv32.asc ]; then \
+		echo ""; \
+		echo "✓ Place and route complete: build/ice40_picorv32.asc"; \
+	else \
+		echo ""; \
+		echo "✗ All seeds failed - design may not fit"; \
+		exit 1; \
+	fi
+
 # Pack Bitstream: ASC -> BIN
 pack: pnr
 	@echo "========================================="

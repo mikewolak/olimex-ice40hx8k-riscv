@@ -223,10 +223,6 @@ config TIMER_BASE
     default 0x80000020
     depends on PERIPHERAL_TIMER
 
-config PERIPHERAL_VGA
-    bool "Enable VGA Controller"
-    default n
-
 config PERIPHERAL_GPIO
     bool "Enable GPIO"
     default y

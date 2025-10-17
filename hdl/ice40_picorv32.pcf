@@ -65,19 +65,5 @@ set_io SRAM_WE_N T7 # Write Enable (Pin 17) - Active Low
 set_io UART_RX E4     # UART Receive Data
 set_io UART_TX B2     # UART Transmit Data
 
-# VGA Interface (via iCE40-IO expansion module or 34-pin GPIO connector)
-# Compatible with iCE40HX1K-EVB VGA pinout
-set_io VGA_R[0] 24    # VGA Red bit 0 (LSB)
-set_io VGA_R[1] 19    # VGA Red bit 1
-set_io VGA_R[2] 18    # VGA Red bit 2 (MSB)
-set_io VGA_G[0] 27    # VGA Green bit 0 (LSB)
-set_io VGA_G[1] 26    # VGA Green bit 1
-set_io VGA_G[2] 25    # VGA Green bit 2 (MSB)
-set_io VGA_B[0] 30    # VGA Blue bit 0 (LSB)
-set_io VGA_B[1] 29    # VGA Blue bit 1
-set_io VGA_B[2] 28    # VGA Blue bit 2 (MSB)
-set_io VGA_HS 33      # VGA Horizontal Sync
-set_io VGA_VS 34      # VGA Vertical Sync
-
 # Note: BLE# and BHE# are connected to GND on the board (always enabled)
 # Note: SD8 and SD9 share pins with GBIN5 and GBIN4 respectively

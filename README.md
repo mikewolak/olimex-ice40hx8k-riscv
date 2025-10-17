@@ -56,7 +56,7 @@ The system uses Kconfig for configuration:
 
 - **PicoRV32 Core**: ISA extensions (RV32I/RV32IM/RV32IC), MUL/DIV, barrel shifter, IRQ mode
 - **Memory Map**: ROM/RAM addresses and sizes
-- **Peripherals**: UART, Timer, VGA, GPIO with configurable MMIO addresses
+- **Peripherals**: UART, Timer, GPIO with configurable MMIO addresses
 - **Build Options**: Optimization levels, synthesis options, simulation
 - **Toolchains**: Use system tools or build from source
 
@@ -81,7 +81,7 @@ The system uses Kconfig for configuration:
 - **Board**: Olimex iCE40HX8K-EVB
 - **FPGA**: Lattice iCE40HX8K (7680 LUTs)
 - **SRAM**: 512KB external SRAM
-- **Peripherals**: UART, Timer, GPIO, VGA (optional)
+- **Peripherals**: UART, Timer, GPIO
 
 ## Default Configuration
 

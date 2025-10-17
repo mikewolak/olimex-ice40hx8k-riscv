@@ -45,25 +45,8 @@ module mmio_peripherals (
     output reg [31:0] mode_wdata,
     input wire [31:0] mode_rdata,
 
-    // VGA Interface
-    output wire [2:0] vga_r,
-    output wire [2:0] vga_g,
-    output wire [2:0] vga_b,
-    output wire       vga_hs,
-    output wire       vga_vs,
-
-    // SRAM Interface (shared with VGA controller)
-    input wire        vga_sram_valid,
-    output wire       vga_sram_ready,
-    input wire        vga_sram_we,
-    input wire [18:0] vga_sram_addr,
-    input wire [15:0] vga_sram_wdata,
-    output wire [15:0] vga_sram_rdata,
-
     // Interrupt Outputs
-    output wire timer_irq,
-    output wire vga_vblank_irq,
-    output wire vga_hblank_irq
+    output wire timer_irq
 );
 
     // Memory Map
@@ -75,7 +58,6 @@ module mmio_peripherals (
     localparam ADDR_MODE_CONTROL   = 32'h80000014;  // Bit 0: 0=Shell, 1=App
     localparam ADDR_BUTTON_INPUT   = 32'h80000018;  // Bit 0: BUT1, Bit 1: BUT2 (1=pressed)
     localparam ADDR_TIMER_BASE     = 32'h80000020;  // Timer registers (0x20-0x2F)
-    localparam ADDR_VGA_BASE       = 32'h80000040;  // VGA registers (0x40-0x5F)
 
     // LED Control Register
     reg [1:0] led_reg;
@@ -85,16 +67,8 @@ module mmio_peripherals (
     wire        timer_ready;
     wire [31:0] timer_rdata;
 
-    // VGA interface signals
-    wire        vga_valid;
-    wire        vga_ready;
-    wire [31:0] vga_rdata;
-
     // Address decode for timer (0x80000020-0x8000002F)
     wire addr_is_timer = (mmio_addr[31:4] == 28'h8000002);
-
-    // Address decode for VGA (0x80000040-0x8000005F)
-    wire addr_is_vga = (mmio_addr[31:5] == 27'h400002);
 
     // Timer Peripheral Instance
     timer_peripheral timer (
@@ -111,34 +85,6 @@ module mmio_peripherals (
     );
 
     assign timer_valid = mmio_valid && addr_is_timer;
-
-    // VGA Controller Instance
-    vga_controller vga (
-        .clk(clk),
-        .resetn(resetn),
-        .vga_r(vga_r),
-        .vga_g(vga_g),
-        .vga_b(vga_b),
-        .vga_hs(vga_hs),
-        .vga_vs(vga_vs),
-        .mmio_valid(vga_valid),
-        .mmio_write(mmio_write),
-        .mmio_addr(mmio_addr),
-        .mmio_wdata(mmio_wdata),
-        .mmio_wstrb(mmio_wstrb),
-        .mmio_rdata(vga_rdata),
-        .mmio_ready(vga_ready),
-        .sram_valid(vga_sram_valid),
-        .sram_ready(vga_sram_ready),
-        .sram_we(vga_sram_we),
-        .sram_addr(vga_sram_addr),
-        .sram_wdata(vga_sram_wdata),
-        .sram_rdata(vga_sram_rdata),
-        .vga_vblank_irq(vga_vblank_irq),
-        .vga_hblank_irq(vga_hblank_irq)
-    );
-
-    assign vga_valid = mmio_valid && addr_is_vga;
 
     always @(posedge clk) begin
         if (!resetn) begin
@@ -171,13 +117,6 @@ module mmio_peripherals (
                     // synthesis translate_on
                     mmio_rdata <= timer_rdata;
                     mmio_ready <= timer_ready;
-                end else if (addr_is_vga) begin
-                    // Route VGA addresses to VGA controller
-                    // synthesis translate_off
-                    $display("[MMIO_PERIPH] Routing to VGA: addr=0x%08x write=%b ready=%b", mmio_addr, mmio_write, vga_ready);
-                    // synthesis translate_on
-                    mmio_rdata <= vga_rdata;
-                    mmio_ready <= vga_ready;
                 end else if (mmio_write) begin
                     // ============ WRITE OPERATIONS ============
                     case (mmio_addr)
