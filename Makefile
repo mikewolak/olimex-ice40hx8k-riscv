@@ -6,7 +6,7 @@
 .PHONY: toolchain-riscv toolchain-fpga toolchain-download toolchain-check
 .PHONY: fetch-picorv32 build-newlib check-newlib
 .PHONY: fw-led-blink fw-timer-clock fw-hexedit fw-heap-test fw-algo-test
-.PHONY: fw-mandelbrot-fixed fw-mandelbrot-float firmware-all
+.PHONY: fw-mandelbrot-fixed fw-mandelbrot-float firmware-all firmware-bare firmware-newlib newlib-if-needed
 .PHONY: bitstream synth pnr pnr-sa pack timing
 
 # Detect number of cores
@@ -22,7 +22,7 @@ else
     PREFIX := riscv64-unknown-elf-
 endif
 
-all: toolchain-check bootloader firmware-all bitstream upload-tool
+all: toolchain-check bootloader firmware-bare newlib-if-needed firmware-newlib bitstream upload-tool
 	@echo ""
 	@echo "========================================="
 	@echo "✓ Build Complete!"
@@ -256,6 +256,8 @@ bootloader: generate
 	@echo "  (Embedded in BRAM during bitstream synthesis)"
 
 # Bare metal firmware targets (no newlib)
+firmware-bare: fw-led-blink fw-timer-clock
+
 fw-led-blink: generate
 	@$(MAKE) -C firmware TARGET=led_blink USE_NEWLIB=0 single-target
 
@@ -278,8 +280,21 @@ fw-mandelbrot-fixed: generate check-newlib
 fw-mandelbrot-float: generate check-newlib
 	@$(MAKE) -C firmware TARGET=mandelbrot_float USE_NEWLIB=1 single-target
 
+# Build newlib firmware (conditional on newlib being installed)
+firmware-newlib: fw-hexedit fw-heap-test fw-algo-test fw-mandelbrot-fixed fw-mandelbrot-float
+
+# Check and build newlib if needed
+newlib-if-needed:
+	@. ./.config && \
+	if [ "$$CONFIG_BUILD_NEWLIB" = "y" ]; then \
+		if [ ! -d build/sysroot/riscv64-unknown-elf/include ]; then \
+			echo "Newlib not found, building..."; \
+			$(MAKE) build-newlib; \
+		fi; \
+	fi
+
 # Build all firmware targets
-firmware-all: fw-led-blink fw-timer-clock fw-hexedit fw-heap-test fw-algo-test fw-mandelbrot-fixed fw-mandelbrot-float
+firmware-all: firmware-bare firmware-newlib
 	@echo ""
 	@echo "========================================="
 	@echo "✓ All firmware targets built"
@@ -327,7 +342,19 @@ synth: bootloader
 	echo "Tool:    Yosys"; \
 	echo "Target:  iCE40HX8K"; \
 	echo ""; \
-	yosys -p "synth_ice40 -top ice40_picorv32_top -json build/ice40_picorv32.json $$SYNTH_OPTS" hdl/*.v
+	yosys -p "synth_ice40 -top ice40_picorv32_top -json build/ice40_picorv32.json $$SYNTH_OPTS" \
+		hdl/picorv32.v \
+		hdl/uart.v \
+		hdl/circular_buffer.v \
+		hdl/crc32_gen.v \
+		hdl/sram_driver_new.v \
+		hdl/sram_proc_new.v \
+		hdl/firmware_loader.v \
+		hdl/bootloader_rom.v \
+		hdl/mem_controller.v \
+		hdl/mmio_peripherals.v \
+		hdl/timer_peripheral.v \
+		hdl/ice40_picorv32_top.v
 	@echo ""
 	@echo "✓ Synthesis complete: build/ice40_picorv32.json"
 
