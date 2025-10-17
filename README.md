@@ -72,7 +72,7 @@ If build tools are missing, the script will provide distribution-specific instal
 - wget or curl
 - tar
 
-**All other dependencies** (FPGA tools, RISC-V toolchain) are automatically downloaded and built by the Makefile.
+**All other dependencies** (FPGA tools, RISC-V toolchain) are automatically downloaded by the Makefile.
 
 ### Building
 
