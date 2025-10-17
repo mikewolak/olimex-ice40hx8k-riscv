@@ -1,12 +1,16 @@
 # Build artifacts
 build/
 deploy/
+artifacts/
 *.elf
 *.bin
 *.hex
 *.lst
 *.map
 *.o
+
+# Host tools (compiled binaries)
+tools/uploader/fw_upload
 
 # Configuration
 .config
