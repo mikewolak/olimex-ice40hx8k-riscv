@@ -70,6 +70,10 @@ if [ ! -f Makefile ]; then
         --prefix=$(cd ../../$NEWLIB_INSTALL && pwd) \
         --with-arch=$ARCH \
         --with-abi=$ABI \
+        --disable-newlib-fvwrite-in-streamio \
+        --disable-newlib-fseek-optimization \
+        --disable-newlib-wide-orient \
+        --disable-newlib-unbuf-stream-opt \
         --disable-newlib-supplied-syscalls \
         --disable-nls \
         --disable-multilib \
