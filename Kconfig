@@ -119,6 +119,40 @@ config STACKADDR
 
 endmenu
 
+menu "C Library (Newlib)"
+
+config BUILD_NEWLIB
+    bool "Build newlib C library"
+    default n
+    help
+      Build newlib from source for the configured ISA.
+      Required for firmware using printf, malloc, etc.
+      Build time: ~30-45 minutes
+
+if BUILD_NEWLIB
+
+config NEWLIB_REPO
+    string "Newlib repository URL"
+    default "https://sourceware.org/git/newlib-cygwin.git"
+
+config NEWLIB_NANO
+    bool "Enable nano specs (smaller)"
+    default y
+    help
+      Use newlib-nano for reduced code size.
+      Recommended for embedded systems.
+
+config NEWLIB_IO_FLOAT
+    bool "Enable floating point I/O"
+    default y
+    help
+      Support printf/scanf with float/double.
+      Required for mandelbrot_float and math_test.
+
+endif # BUILD_NEWLIB
+
+endmenu
+
 menu "Memory Configuration"
 
 config ROM_BASE

@@ -4,7 +4,10 @@
 .PHONY: all help clean distclean mrproper menuconfig defconfig generate
 .PHONY: bootloader firmware upload-tool test-generators
 .PHONY: toolchain-riscv toolchain-fpga toolchain-download toolchain-check
-.PHONY: fetch-picorv32
+.PHONY: fetch-picorv32 build-newlib check-newlib
+.PHONY: fw-led-blink fw-timer-clock fw-hexedit fw-heap-test fw-algo-test
+.PHONY: fw-mandelbrot-fixed fw-mandelbrot-float firmware-all
+.PHONY: bitstream synth pnr pnr-sa pack timing
 
 # Detect number of cores
 NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
@@ -37,16 +40,34 @@ help:
 	@echo "  make toolchain-riscv    - Build RISC-V GCC from source (~1-2 hours)"
 	@echo "  make toolchain-fpga     - Build Yosys/NextPNR/IceStorm (~30-45 min)"
 	@echo "  make fetch-picorv32     - Download PicoRV32 core"
+	@echo "  make build-newlib       - Build newlib C library (~30-45 min)"
+	@echo "  make check-newlib       - Check if newlib is installed"
 	@echo ""
 	@echo "Code Generation:"
 	@echo "  make generate        - Generate platform files from .config"
 	@echo "  make test-generators - Test generator scripts"
 	@echo ""
-	@echo "Building (TODO - Not yet implemented):"
-	@echo "  make bootloader      - Build bootloader"
-	@echo "  make firmware        - Build firmware"
-	@echo "  make bitstream       - Build FPGA bitstream"
-	@echo "  make upload-tool     - Build firmware uploader"
+	@echo "Building:"
+	@echo "  make bootloader           - Build bootloader"
+	@echo "  make firmware-all         - Build all firmware targets"
+	@echo "  make bitstream            - Build FPGA bitstream (synth + pnr + pack)"
+	@echo "  make synth                - Synthesis only (Verilog -> JSON)"
+	@echo "  make pnr                  - Place and route (JSON -> ASC)"
+	@echo "  make pnr-sa               - Place and route with SA placer"
+	@echo "  make pack                 - Pack bitstream (ASC -> BIN)"
+	@echo "  make timing               - Timing analysis"
+	@echo "  make upload-tool          - Build firmware uploader"
+	@echo ""
+	@echo "Firmware Targets (bare metal):"
+	@echo "  make fw-led-blink         - LED blink demo"
+	@echo "  make fw-timer-clock       - Timer clock demo"
+	@echo ""
+	@echo "Firmware Targets (newlib):"
+	@echo "  make fw-hexedit           - Hex editor with file upload"
+	@echo "  make fw-heap-test         - Heap allocation test"
+	@echo "  make fw-algo-test         - Algorithm test suite"
+	@echo "  make fw-mandelbrot-fixed  - Mandelbrot (fixed point)"
+	@echo "  make fw-mandelbrot-float  - Mandelbrot (floating point)"
 	@echo ""
 	@echo "Clean:"
 	@echo "  make clean           - Remove build artifacts"
@@ -143,6 +164,31 @@ toolchain-fpga:
 fetch-picorv32: .config
 	@./scripts/fetch_picorv32.sh
 
+build-newlib: .config
+	@if [ ! -f .config ]; then \
+		echo "ERROR: No .config found. Run 'make defconfig' first."; \
+		exit 1; \
+	fi
+	@. ./.config && \
+	if [ "$$CONFIG_BUILD_NEWLIB" != "y" ]; then \
+		echo "ERROR: Newlib build not enabled in configuration"; \
+		echo "Run 'make menuconfig' and enable 'Build newlib C library'"; \
+		exit 1; \
+	fi
+	@echo "Building newlib C library..."
+	@./scripts/build_newlib.sh
+
+check-newlib:
+	@if [ -d build/sysroot ]; then \
+		echo "✓ Newlib installed at build/sysroot"; \
+		echo ""; \
+		echo "Libraries:"; \
+		find build/sysroot -name "*.a" | head -5; \
+	else \
+		echo "✗ Newlib not found"; \
+		echo "Run: make build-newlib"; \
+	fi
+
 # ============================================================================
 # Code Generation
 # ============================================================================
@@ -173,20 +219,184 @@ test-generators: defconfig
 	@echo "✓ Generator scripts working correctly"
 
 # ============================================================================
-# Build targets (stubs for now)
+# Build Targets
 # ============================================================================
 
+# Bootloader (required before bitstream - embedded in BRAM)
 bootloader: generate
-	@echo "TODO: Implement bootloader build"
-	@echo "Will build from bootloader/*.c using generated files"
+	@echo "========================================="
+	@echo "Building Bootloader"
+	@echo "========================================="
+	@mkdir -p build/bootloader
+	@if [ -x "build/toolchain/bin/riscv64-unknown-elf-gcc" ]; then \
+		TOOLCHAIN_PREFIX="build/toolchain/bin/riscv64-unknown-elf-"; \
+	elif [ -x "build/toolchain/bin/riscv32-unknown-elf-gcc" ]; then \
+		TOOLCHAIN_PREFIX="build/toolchain/bin/riscv32-unknown-elf-"; \
+	else \
+		TOOLCHAIN_PREFIX="riscv64-unknown-elf-"; \
+	fi; \
+	. ./.config && \
+	ARCH="rv32i"; \
+	if [ "$$CONFIG_ENABLE_MUL" = "y" ] && [ "$$CONFIG_ENABLE_DIV" = "y" ]; then \
+		ARCH="$${ARCH}m"; \
+	fi; \
+	if [ "$$CONFIG_COMPRESSED_ISA" = "y" ]; then \
+		ARCH="$${ARCH}c"; \
+	fi; \
+	$${TOOLCHAIN_PREFIX}gcc -march=$$ARCH -mabi=ilp32 -O2 -g -Wall -Wextra \
+		-ffreestanding -fno-builtin -Ibuild/generated \
+		-T build/generated/linker.ld -nostartfiles -Wl,--gc-sections \
+		-Wl,-Map=build/bootloader/bootloader.map \
+		build/generated/start.S bootloader/bootloader.c -lgcc \
+		-o build/bootloader/bootloader.elf && \
+	$${TOOLCHAIN_PREFIX}objcopy -O verilog build/bootloader/bootloader.elf \
+		bootloader/bootloader.hex && \
+	$${TOOLCHAIN_PREFIX}objcopy -O binary build/bootloader/bootloader.elf \
+		bootloader/bootloader.bin && \
+	$${TOOLCHAIN_PREFIX}objdump -D -S build/bootloader/bootloader.elf \
+		> bootloader/bootloader.lst && \
+	$${TOOLCHAIN_PREFIX}size build/bootloader/bootloader.elf
+	@echo ""
+	@echo "✓ Bootloader built: bootloader/bootloader.hex"
+	@echo "  (Embedded in BRAM during bitstream synthesis)"
 
-firmware: generate
-	@echo "TODO: Implement firmware build"
-	@echo "Will build firmware/*.c using generated files"
+# Bare metal firmware targets (no newlib)
+fw-led-blink: generate
+	@./scripts/build_firmware.sh led_blink 0
+
+fw-timer-clock: generate
+	@./scripts/build_firmware.sh timer_clock 0
+
+# Newlib firmware targets (require newlib)
+fw-hexedit: generate check-newlib
+	@./scripts/build_firmware.sh hexedit 1
+
+fw-heap-test: generate check-newlib
+	@./scripts/build_firmware.sh heap_test 1
+
+fw-algo-test: generate check-newlib
+	@./scripts/build_firmware.sh algo_test 1
+
+fw-mandelbrot-fixed: generate check-newlib
+	@./scripts/build_firmware.sh mandelbrot_fixed 1
+
+fw-mandelbrot-float: generate check-newlib
+	@./scripts/build_firmware.sh mandelbrot_float 1
+
+# Build all firmware targets
+firmware-all: fw-led-blink fw-timer-clock fw-hexedit fw-heap-test fw-algo-test fw-mandelbrot-fixed fw-mandelbrot-float
+	@echo ""
+	@echo "========================================="
+	@echo "✓ All firmware targets built"
+	@echo "========================================="
+	@echo ""
+	@echo "Built firmware:"
+	@find build/firmware -name "*.elf" -exec ls -lh {} \;
 
 upload-tool:
 	@echo "TODO: Implement upload tool build"
 	@echo "Will build tools/upload/fw_upload.c"
+
+# ============================================================================
+# HDL Synthesis and Bitstream Generation
+# ============================================================================
+
+bitstream: bootloader synth pnr pack
+	@echo ""
+	@echo "========================================="
+	@echo "✓ Bitstream generation complete"
+	@echo "========================================="
+	@echo "Bitstream: build/ice40_picorv32.bin"
+	@ls -lh build/ice40_picorv32.bin
+	@echo ""
+	@echo "To program FPGA:"
+	@echo "  iceprog build/ice40_picorv32.bin"
+
+# Synthesis: Verilog -> JSON (requires bootloader.hex)
+synth: bootloader
+	@echo "========================================="
+	@echo "Synthesis: Verilog -> JSON"
+	@echo "========================================="
+	@. ./.config && \
+	SYNTH_OPTS=""; \
+	if [ "$$CONFIG_SYNTH_ABC9" = "y" ]; then \
+		SYNTH_OPTS="-abc9"; \
+		echo "ABC9:    enabled"; \
+	else \
+		echo "ABC9:    disabled"; \
+	fi; \
+	echo "Tool:    Yosys"; \
+	echo "Target:  iCE40HX8K"; \
+	echo ""; \
+	yosys -p "synth_ice40 -top ice40_picorv32_top -json build/ice40_picorv32.json $$SYNTH_OPTS" hdl/*.v
+	@echo ""
+	@echo "✓ Synthesis complete: build/ice40_picorv32.json"
+
+# Place and Route: JSON -> ASC
+pnr: synth
+	@echo "========================================="
+	@echo "Place and Route: JSON -> ASC"
+	@echo "========================================="
+	@. ./.config && \
+	PCF_FILE="$$CONFIG_PCF_FILE"; \
+	if [ -z "$$PCF_FILE" ]; then \
+		PCF_FILE="hdl/ice40_picorv32.pcf"; \
+	fi; \
+	echo "Tool:    NextPNR-iCE40"; \
+	echo "Device:  hx8k"; \
+	echo "Package: ct256"; \
+	echo "PCF:     $$PCF_FILE"; \
+	echo "Placer:  heap --seed 1"; \
+	echo ""; \
+	nextpnr-ice40 --hx8k --package ct256 \
+		--json build/ice40_picorv32.json \
+		--pcf "$$PCF_FILE" \
+		--asc build/ice40_picorv32.asc \
+		--placer heap --seed 1
+	@echo ""
+	@echo "✓ Place and route complete: build/ice40_picorv32.asc"
+
+# Alternative: Simulated Annealing placer (better for tight designs)
+pnr-sa: synth
+	@echo "========================================="
+	@echo "Place and Route: JSON -> ASC (SA)"
+	@echo "========================================="
+	@. ./.config && \
+	PCF_FILE="$$CONFIG_PCF_FILE"; \
+	if [ -z "$$PCF_FILE" ]; then \
+		PCF_FILE="hdl/ice40_picorv32.pcf"; \
+	fi; \
+	echo "Tool:    NextPNR-iCE40"; \
+	echo "Device:  hx8k"; \
+	echo "Package: ct256"; \
+	echo "PCF:     $$PCF_FILE"; \
+	echo "Placer:  SA (Simulated Annealing)"; \
+	echo ""; \
+	nextpnr-ice40 --hx8k --package ct256 \
+		--json build/ice40_picorv32.json \
+		--pcf "$$PCF_FILE" \
+		--asc build/ice40_picorv32.asc \
+		--placer sa --ignore-loops
+	@echo ""
+	@echo "✓ Place and route complete: build/ice40_picorv32.asc"
+
+# Pack Bitstream: ASC -> BIN
+pack: pnr
+	@echo "========================================="
+	@echo "Pack Bitstream: ASC -> BIN"
+	@echo "========================================="
+	icepack build/ice40_picorv32.asc build/ice40_picorv32.bin
+	@echo "✓ Bitstream packed: build/ice40_picorv32.bin"
+
+# Timing analysis
+timing: pnr
+	@echo "========================================="
+	@echo "Timing Analysis"
+	@echo "========================================="
+	icetime -d hx8k -mtr build/timing_report.txt build/ice40_picorv32.asc
+	@echo ""
+	@echo "Timing report:"
+	@grep -A5 "Max frequency" build/timing_report.txt || cat build/timing_report.txt
 
 # ============================================================================
 # Clean targets
