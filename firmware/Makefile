@@ -23,8 +23,8 @@ OBJCOPY = $(PREFIX)objcopy
 OBJDUMP = $(PREFIX)objdump
 SIZE = $(PREFIX)size
 
-# Newlib paths (installed in system directory)
-NEWLIB_INSTALL = ../system/riscv-newlib
+# Newlib paths (installed in build/sysroot)
+NEWLIB_INSTALL = ../build/sysroot
 SYSCALLS_SRC = ../lib/syscalls.c
 SYSCALLS_OBJ = syscalls.o
 
