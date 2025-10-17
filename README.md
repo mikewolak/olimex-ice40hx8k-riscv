@@ -17,7 +17,7 @@ Email: mikewolak@gmail.com, mike@epromfoundry.com
 This project implements a fully functional RISC-V RV32IM processor system on the Lattice iCE40HX8K FPGA. The system includes:
 
 - **PicoRV32 CPU Core** - 32-bit RISC-V processor running at 50 MHz
-- **Bootloader** - Interactive serial bootloader with firmware upload over UART
+- **Bootloader** - Serial firmware uploader with CRC32 verification
 - **512KB External SRAM** - High-performance 5-cycle SRAM controller
 - **MMIO Peripherals** - UART, Timer, GPIO, and more
 - **Rich Firmware Library** - Over 20 example applications
@@ -40,11 +40,11 @@ This project implements a fully functional RISC-V RV32IM processor system on the
 - **CRC32**: Hardware CRC32 for firmware verification
 
 ### Bootloader
-- Interactive command-line interface over UART
-- Firmware upload with CRC32 verification
-- Memory inspection and modification
-- Jump to uploaded firmware
-- Safe fallback on upload errors
+- Firmware upload protocol over UART
+- CRC32 verification of uploaded firmware
+- Automatic execution after successful upload
+- LED status indicators for upload progress
+- Halts on CRC mismatch for safety
 
 ### Build System
 - **Automatic toolchain management** - Downloads and builds required tools
@@ -135,27 +135,24 @@ olimexino-32u4 -p artifacts/gateware/ice40_picorv32.bin
 iceprog artifacts/gateware/ice40_picorv32.bin
 ```
 
-### Connecting to the Bootloader
+### Bootloader Operation
 
-The bootloader runs automatically after FPGA configuration:
+The bootloader runs automatically after FPGA configuration. It implements a simple firmware upload protocol (not an interactive shell):
 
-```bash
-# Connect via minicom (Linux)
-minicom -D /dev/ttyUSB0 -b 115200
+**Protocol:**
+1. Waits for 'R' (Ready) command from fw_upload tool
+2. Receives firmware size (4 bytes, little-endian)
+3. Receives firmware data in 64-byte chunks with ACK handshake
+4. Verifies CRC32 checksum
+5. Automatically jumps to uploaded firmware at address 0x0
 
-# Or screen
-screen /dev/ttyUSB0 115200
+**LED indicators:**
+- LED1 on: Waiting for upload
+- LED2 on: Downloading firmware
+- Both LEDs: Download in progress
+- LEDs off: Success (firmware running) or CRC error
 
-# Or picocom
-picocom -b 115200 /dev/ttyUSB0
-```
-
-**Bootloader commands:**
-- `help` - Show available commands
-- `upload` - Enter firmware upload mode
-- `jump` - Execute uploaded firmware
-- `read <addr>` - Read memory
-- `write <addr> <data>` - Write memory
+The bootloader is not interactive - use the `fw_upload` host tool to upload firmware.
 
 ### Uploading Firmware
 
