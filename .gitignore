@@ -1,0 +1,39 @@
+# Build artifacts
+build/
+deploy/
+*.elf
+*.bin
+*.hex
+*.lst
+*.map
+*.o
+
+# Configuration
+.config
+.config.old
+
+# Downloaded dependencies
+downloads/
+
+# Generated build files
+build.ninja
+.ninja_deps
+.ninja_log
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Simulation
+sim/work/
+sim/*.wlf
+sim/transcript
+*.vcd
+*.log
