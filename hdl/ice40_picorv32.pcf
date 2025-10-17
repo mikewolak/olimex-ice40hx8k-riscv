@@ -1,0 +1,83 @@
+#===============================================================================
+# Olimex iCE40HX8K-EVB RISC-V Platform
+# ice40_picorv32.pcf - Pin Constraint File for iCE40HX8K-CT256
+#
+# Copyright (c) October 2025 Michael Wolak
+# Email: mikewolak@gmail.com, mike@epromfoundry.com
+#
+# NOT FOR COMMERCIAL USE
+# Educational and research purposes only
+#===============================================================================
+
+# Clock Input (100MHz Crystal Oscillator)
+set_io EXTCLK J3
+
+# User Interface
+set_io BUT1 K11    # User Button 1 / Cold Boot Select 0
+set_io BUT2 P13    # User Button 2 / Cold Boot Select 1
+set_io LED1 M12    # User LED 1 (Red - Active High)
+set_io LED2 R16    # User LED 2 (Red - Active High)
+
+# SRAM Address Lines (18 bits: SA0-SA17)
+set_io SA[0] N6     # SRAM Address Bit 0 (Pin 1)
+set_io SA[1] T1     # SRAM Address Bit 1 (Pin 2)
+set_io SA[2] P4     # SRAM Address Bit 2 (Pin 3)
+set_io SA[3] R2     # SRAM Address Bit 3 (Pin 4)
+set_io SA[4] N5     # SRAM Address Bit 4 (Pin 5)
+set_io SA[5] T2     # SRAM Address Bit 5 (Pin 18)
+set_io SA[6] P5     # SRAM Address Bit 6 (Pin 19)
+set_io SA[7] R3     # SRAM Address Bit 7 (Pin 20)
+set_io SA[8] R5     # SRAM Address Bit 8 (Pin 21)
+set_io SA[9] T3     # SRAM Address Bit 9 (Pin 22)
+set_io SA[10] R4    # SRAM Address Bit 10 (Pin 23)
+set_io SA[11] M7    # SRAM Address Bit 11 (Pin 24)
+set_io SA[12] N7    # SRAM Address Bit 12 (Pin 25)
+set_io SA[13] P6    # SRAM Address Bit 13 (Pin 26)
+set_io SA[14] M8    # SRAM Address Bit 14 (Pin 27)
+set_io SA[15] T5    # SRAM Address Bit 15 (Pin 42)
+set_io SA[16] R6    # SRAM Address Bit 16 (Pin 43)
+set_io SA[17] P8    # SRAM Address Bit 17 (Pin 44) - MSB
+
+# SRAM Data Lines (16 bits: SD0-SD15)
+set_io SD[0] T8     # SRAM Data Bit 0 (Pin 7)
+set_io SD[1] P7     # SRAM Data Bit 1 (Pin 8)
+set_io SD[2] N9     # SRAM Data Bit 2 (Pin 9)
+set_io SD[3] T9     # SRAM Data Bit 3 (Pin 10)
+set_io SD[4] M9     # SRAM Data Bit 4 (Pin 13)
+set_io SD[5] R9     # SRAM Data Bit 5 (Pin 14)
+set_io SD[6] K9     # SRAM Data Bit 6 (Pin 15)
+set_io SD[7] P9     # SRAM Data Bit 7 (Pin 16)
+set_io SD[8] R10    # SRAM Data Bit 8 (Pin 29) / GBIN5
+set_io SD[9] L10    # SRAM Data Bit 9 (Pin 30) / GBIN4
+set_io SD[10] P10   # SRAM Data Bit 10 (Pin 31)
+set_io SD[11] N10   # SRAM Data Bit 11 (Pin 32)
+set_io SD[12] T10   # SRAM Data Bit 12 (Pin 35)
+set_io SD[13] T11   # SRAM Data Bit 13 (Pin 36)
+set_io SD[14] T15   # SRAM Data Bit 14 (Pin 37)
+set_io SD[15] T14   # SRAM Data Bit 15 (Pin 38) - MSB
+
+# SRAM Control Signals
+set_io SRAM_CS_N T6 # Chip Select (Pin 6) - Active Low
+set_io SRAM_OE_N L9 # Output Enable (Pin 41) - Active Low
+set_io SRAM_WE_N T7 # Write Enable (Pin 17) - Active Low
+
+# UART Interface
+set_io UART_RX E4     # UART Receive Data
+set_io UART_TX B2     # UART Transmit Data
+
+# VGA Interface (via iCE40-IO expansion module or 34-pin GPIO connector)
+# Compatible with iCE40HX1K-EVB VGA pinout
+set_io VGA_R[0] 24    # VGA Red bit 0 (LSB)
+set_io VGA_R[1] 19    # VGA Red bit 1
+set_io VGA_R[2] 18    # VGA Red bit 2 (MSB)
+set_io VGA_G[0] 27    # VGA Green bit 0 (LSB)
+set_io VGA_G[1] 26    # VGA Green bit 1
+set_io VGA_G[2] 25    # VGA Green bit 2 (MSB)
+set_io VGA_B[0] 30    # VGA Blue bit 0 (LSB)
+set_io VGA_B[1] 29    # VGA Blue bit 1
+set_io VGA_B[2] 28    # VGA Blue bit 2 (MSB)
+set_io VGA_HS 33      # VGA Horizontal Sync
+set_io VGA_VS 34      # VGA Vertical Sync
+
+# Note: BLE# and BHE# are connected to GND on the board (always enabled)
+# Note: SD8 and SD9 share pins with GBIN5 and GBIN4 respectively

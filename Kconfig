@@ -1,0 +1,242 @@
+mainmenu "PicoRV32 FPGA System Configuration"
+
+menu "Toolchain Options"
+
+choice
+    prompt "RISC-V Toolchain Source"
+    default TOOLCHAIN_SYSTEM
+
+config TOOLCHAIN_SYSTEM
+    bool "Use system-installed toolchain"
+    help
+      Use riscv64-unknown-elf-gcc from system PATH
+
+config TOOLCHAIN_BUILD
+    bool "Build toolchain from source"
+    help
+      Download and build RISC-V GNU toolchain (takes 1-2 hours)
+
+config TOOLCHAIN_DOWNLOAD
+    bool "Download pre-built toolchain"
+    help
+      Download pre-built toolchain binaries
+
+endchoice
+
+choice
+    prompt "FPGA Toolchain Source"
+    default FPGA_TOOLS_SYSTEM
+
+config FPGA_TOOLS_SYSTEM
+    bool "Use system-installed tools"
+    help
+      Use yosys, nextpnr-ice40, icepack from system PATH
+
+config FPGA_TOOLS_BUILD
+    bool "Build OSS CAD Suite from source"
+    help
+      Build Yosys, NextPNR, IceStorm from source
+
+config FPGA_TOOLS_DOWNLOAD
+    bool "Download OSS CAD Suite"
+    help
+      Download pre-built OSS CAD Suite binaries
+
+endchoice
+
+endmenu
+
+menu "PicoRV32 Core Configuration"
+
+config PICORV32_REPO
+    string "PicoRV32 repository URL"
+    default "https://github.com/YosysHQ/picorv32.git"
+
+config PICORV32_COMMIT
+    string "PicoRV32 commit/tag"
+    default "master"
+    help
+      Specific commit hash or tag for reproducibility
+
+config COMPRESSED_ISA
+    bool "Enable compressed instructions (RV32IC)"
+    default n
+    help
+      Enable RISC-V compressed instruction set
+      Reduces code size by ~25-30%
+
+config ENABLE_MUL
+    bool "Enable hardware multiplier"
+    default y
+
+config ENABLE_DIV
+    bool "Enable hardware divider"
+    default y
+
+config ENABLE_FAST_MUL
+    bool "Enable fast multiplier"
+    depends on ENABLE_MUL
+    default n
+
+config BARREL_SHIFTER
+    bool "Enable barrel shifter"
+    default y
+    help
+      Single-cycle shift operations
+      Costs ~100 LUTs but improves performance
+
+config TWO_STAGE_SHIFT
+    bool "Two-stage shift operations"
+    depends on !BARREL_SHIFTER
+    default n
+
+config ENABLE_COUNTERS
+    bool "Enable performance counters"
+    default n
+
+config ENABLE_COUNTERS64
+    bool "64-bit performance counters"
+    depends on ENABLE_COUNTERS
+    default n
+
+config PROGADDR_RESET
+    hex "Reset vector address"
+    default 0x00040000
+    help
+      Address where CPU starts execution (bootloader ROM)
+
+config PROGADDR_IRQ
+    hex "IRQ vector address"
+    default 0x00000010
+    help
+      Address of interrupt handler
+
+config STACKADDR
+    hex "Initial stack address"
+    default 0x00080000
+    help
+      Top of stack (grows downward)
+
+endmenu
+
+menu "Memory Configuration"
+
+config ROM_BASE
+    hex "ROM base address"
+    default 0x00040000
+
+config ROM_SIZE
+    hex "ROM size (bytes)"
+    default 0x00002000
+    help
+      8KB bootloader ROM
+
+config APP_SRAM_BASE
+    hex "Application SRAM base address"
+    default 0x00000000
+
+config APP_SRAM_SIZE
+    hex "Application SRAM size (bytes)"
+    default 0x00040000
+    help
+      256KB application code/data space
+
+config STACK_SRAM_BASE
+    hex "Stack/Heap SRAM base address"
+    default 0x00042000
+
+config STACK_SRAM_SIZE
+    hex "Stack/Heap SRAM size (bytes)"
+    default 0x0003E000
+    help
+      ~248KB for heap and stack
+
+config STACK_SIZE
+    hex "Stack size (bytes)"
+    default 0x00004000
+    help
+      16KB stack (grows down from top)
+      Heap will use remaining space between BSS and stack
+
+endmenu
+
+menu "Peripheral Configuration"
+
+config MMIO_BASE
+    hex "MMIO base address"
+    default 0x80000000
+
+config PERIPHERAL_UART
+    bool "Enable UART"
+    default y
+
+config UART_BASE
+    hex "UART base address"
+    default 0x80000000
+    depends on PERIPHERAL_UART
+
+config UART_BAUDRATE
+    int "UART baud rate"
+    default 115200
+    depends on PERIPHERAL_UART
+
+config PERIPHERAL_TIMER
+    bool "Enable Timer"
+    default y
+
+config TIMER_BASE
+    hex "Timer base address"
+    default 0x80000020
+    depends on PERIPHERAL_TIMER
+
+config PERIPHERAL_VGA
+    bool "Enable VGA Controller"
+    default n
+
+config PERIPHERAL_GPIO
+    bool "Enable GPIO"
+    default y
+
+endmenu
+
+menu "Build Options"
+
+config BOARD
+    string "Target board"
+    default "olimex-ice40hx8k"
+
+config PCF_FILE
+    string "Pin constraints file"
+    default "hdl/ice40_picorv32.pcf"
+
+choice
+    prompt "Optimization level"
+    default OPT_TIMING
+
+config OPT_AREA
+    bool "Optimize for area"
+
+config OPT_TIMING
+    bool "Optimize for timing"
+
+config OPT_BALANCED
+    bool "Balanced optimization"
+
+endchoice
+
+config SYNTH_ABC9
+    bool "Use ABC9 for synthesis"
+    default y
+    help
+      Yosys ABC9 optimization
+      May cause stability issues with Yosys 0.58+
+
+config ENABLE_SIMULATION
+    bool "Build simulation targets"
+    default y
+
+config VERBOSE_BUILD
+    bool "Verbose build output"
+    default n
+
+endmenu
