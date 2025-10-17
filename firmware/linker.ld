@@ -1,0 +1,1 @@
+../build/generated/linker.ld

@@ -227,61 +227,33 @@ bootloader: generate
 	@echo "========================================="
 	@echo "Building Bootloader"
 	@echo "========================================="
-	@mkdir -p build/bootloader
-	@if [ -x "build/toolchain/bin/riscv64-unknown-elf-gcc" ]; then \
-		TOOLCHAIN_PREFIX="build/toolchain/bin/riscv64-unknown-elf-"; \
-	elif [ -x "build/toolchain/bin/riscv32-unknown-elf-gcc" ]; then \
-		TOOLCHAIN_PREFIX="build/toolchain/bin/riscv32-unknown-elf-"; \
-	else \
-		TOOLCHAIN_PREFIX="riscv64-unknown-elf-"; \
-	fi; \
-	. ./.config && \
-	ARCH="rv32i"; \
-	if [ "$$CONFIG_ENABLE_MUL" = "y" ] && [ "$$CONFIG_ENABLE_DIV" = "y" ]; then \
-		ARCH="$${ARCH}m"; \
-	fi; \
-	if [ "$$CONFIG_COMPRESSED_ISA" = "y" ]; then \
-		ARCH="$${ARCH}c"; \
-	fi; \
-	$${TOOLCHAIN_PREFIX}gcc -march=$$ARCH -mabi=ilp32 -O2 -g -Wall -Wextra \
-		-ffreestanding -fno-builtin -Ibuild/generated \
-		-T build/generated/linker.ld -nostartfiles -Wl,--gc-sections \
-		-Wl,-Map=build/bootloader/bootloader.map \
-		build/generated/start.S bootloader/bootloader.c -lgcc \
-		-o build/bootloader/bootloader.elf && \
-	$${TOOLCHAIN_PREFIX}objcopy -O verilog build/bootloader/bootloader.elf \
-		bootloader/bootloader.hex && \
-	$${TOOLCHAIN_PREFIX}objcopy -O binary build/bootloader/bootloader.elf \
-		bootloader/bootloader.bin && \
-	$${TOOLCHAIN_PREFIX}objdump -D -S build/bootloader/bootloader.elf \
-		> bootloader/bootloader.lst && \
-	$${TOOLCHAIN_PREFIX}size build/bootloader/bootloader.elf
+	@$(MAKE) -C bootloader
 	@echo ""
 	@echo "✓ Bootloader built: bootloader/bootloader.hex"
 	@echo "  (Embedded in BRAM during bitstream synthesis)"
 
 # Bare metal firmware targets (no newlib)
 fw-led-blink: generate
-	@./scripts/build_firmware.sh led_blink 0
+	@$(MAKE) -C firmware TARGET=led_blink USE_NEWLIB=0 single-target
 
 fw-timer-clock: generate
-	@./scripts/build_firmware.sh timer_clock 0
+	@$(MAKE) -C firmware TARGET=timer_clock USE_NEWLIB=0 single-target
 
 # Newlib firmware targets (require newlib)
 fw-hexedit: generate check-newlib
-	@./scripts/build_firmware.sh hexedit 1
+	@$(MAKE) -C firmware TARGET=hexedit USE_NEWLIB=1 single-target
 
 fw-heap-test: generate check-newlib
-	@./scripts/build_firmware.sh heap_test 1
+	@$(MAKE) -C firmware TARGET=heap_test USE_NEWLIB=1 single-target
 
 fw-algo-test: generate check-newlib
-	@./scripts/build_firmware.sh algo_test 1
+	@$(MAKE) -C firmware TARGET=algo_test USE_NEWLIB=1 single-target
 
 fw-mandelbrot-fixed: generate check-newlib
-	@./scripts/build_firmware.sh mandelbrot_fixed 1
+	@$(MAKE) -C firmware TARGET=mandelbrot_fixed USE_NEWLIB=1 single-target
 
 fw-mandelbrot-float: generate check-newlib
-	@./scripts/build_firmware.sh mandelbrot_float 1
+	@$(MAKE) -C firmware TARGET=mandelbrot_float USE_NEWLIB=1 single-target
 
 # Build all firmware targets
 firmware-all: fw-led-blink fw-timer-clock fw-hexedit fw-heap-test fw-algo-test fw-mandelbrot-fixed fw-mandelbrot-float
@@ -291,7 +263,7 @@ firmware-all: fw-led-blink fw-timer-clock fw-hexedit fw-heap-test fw-algo-test f
 	@echo "========================================="
 	@echo ""
 	@echo "Built firmware:"
-	@find build/firmware -name "*.elf" -exec ls -lh {} \;
+	@ls -lh firmware/*.hex 2>/dev/null || echo "No firmware built yet"
 
 upload-tool:
 	@echo "TODO: Implement upload tool build"
