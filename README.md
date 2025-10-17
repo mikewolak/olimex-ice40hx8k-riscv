@@ -74,6 +74,13 @@ If build tools are missing, the script will provide distribution-specific instal
 
 **All other dependencies** (FPGA tools, RISC-V toolchain) are automatically downloaded by the Makefile.
 
+**IMPORTANT:** If you have system-installed versions of Yosys, NextPNR, or IceStorm tools that are older than the versions listed below, the build may fail. The build system will automatically detect outdated tools and download compatible versions.
+
+**Minimum required versions:**
+- Yosys 0.58+
+- NextPNR 0.9+
+- RISC-V GCC 10.2.0+
+
 ### Building
 
 ```bash

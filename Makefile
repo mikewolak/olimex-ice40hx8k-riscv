@@ -136,6 +136,7 @@ verify-platform:
 	fi
 
 toolchain-check: verify-platform
+	@bash scripts/check-tool-versions.sh || $(MAKE) toolchain-download
 	@echo "========================================="
 	@echo "Checking for required tools"
 	@echo "========================================="
