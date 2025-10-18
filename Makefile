@@ -8,6 +8,7 @@
 .PHONY: fw-led-blink fw-timer-clock fw-hexedit fw-heap-test fw-algo-test
 .PHONY: fw-mandelbrot-fixed fw-mandelbrot-float firmware-all firmware-bare firmware-newlib newlib-if-needed
 .PHONY: bitstream synth pnr pnr-sa pack timing artifacts
+.PHONY: ninja ninja-clean
 
 # Detect number of cores
 NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
@@ -82,6 +83,10 @@ help:
 	@echo "  make fw-algo-test         - Algorithm test suite"
 	@echo "  make fw-mandelbrot-fixed  - Mandelbrot (fixed point)"
 	@echo "  make fw-mandelbrot-float  - Mandelbrot (floating point)"
+	@echo ""
+	@echo "Parallel Build (Ninja):"
+	@echo "  make ninja           - Build with Ninja (auto-installs if needed)"
+	@echo "  make ninja-clean     - Clean Ninja build files"
 	@echo ""
 	@echo "Clean:"
 	@echo "  make clean           - Remove build artifacts"
@@ -644,6 +649,18 @@ artifacts:
 	@echo "========================================="
 	@echo "✓ Artifacts Collection Complete"
 	@echo "========================================="
+
+# ============================================================================
+# Ninja Parallel Build System
+# ============================================================================
+
+ninja:
+	@bash scripts/ninja-build.sh
+
+ninja-clean:
+	@echo "Cleaning Ninja build files..."
+	@rm -f build.ninja .ninja_*
+	@echo "✓ Ninja files cleaned"
 
 # ============================================================================
 # Clean targets
