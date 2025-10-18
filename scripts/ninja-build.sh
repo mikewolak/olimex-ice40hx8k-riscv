@@ -66,7 +66,7 @@ check_fpga_tools() {
 
     echo "FPGA tools not found. Downloading..."
     echo ""
-    make fpga-tools-download
+    make ensure-fpga-tools
 
     if [ ! -f "downloads/oss-cad-suite/bin/yosys" ]; then
         echo "ERROR: Failed to download FPGA tools"
