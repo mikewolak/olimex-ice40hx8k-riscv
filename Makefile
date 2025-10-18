@@ -184,6 +184,17 @@ toolchain-fpga:
 	@echo "Building FPGA tools from source..."
 	@./scripts/build_fpga_tools.sh
 
+# Auto-install FPGA tools if not present
+ensure-fpga-tools:
+	@if [ ! -f downloads/oss-cad-suite/bin/yosys ] || \
+	    [ ! -f downloads/oss-cad-suite/bin/nextpnr-ice40 ] || \
+	    [ ! -f downloads/oss-cad-suite/bin/icepack ]; then \
+		echo "========================================="; \
+		echo "FPGA tools not found - downloading..."; \
+		echo "========================================="; \
+		$(MAKE) toolchain-download; \
+	fi
+
 fetch-picorv32: .config
 	@./scripts/fetch_picorv32.sh
 
@@ -327,7 +338,7 @@ bitstream: bootloader synth pnr pack
 	@echo "  iceprog build/ice40_picorv32.bin"
 
 # Synthesis: Verilog -> JSON (requires bootloader.hex)
-synth: bootloader
+synth: ensure-fpga-tools bootloader
 	@echo "========================================="
 	@echo "Synthesis: Verilog -> JSON"
 	@echo "========================================="
@@ -465,7 +476,13 @@ pack: pnr
 	@echo "========================================="
 	@echo "Pack Bitstream: ASC -> BIN"
 	@echo "========================================="
-	icepack build/ice40_picorv32.asc build/ice40_picorv32.bin
+	@echo "Tool:    icepack"; \
+	ICEPACK_CMD="icepack"; \
+	if [ -f $(CURDIR)/downloads/oss-cad-suite/bin/icepack ]; then \
+		ICEPACK_CMD="$(CURDIR)/downloads/oss-cad-suite/bin/icepack"; \
+		echo "Using: $$ICEPACK_CMD"; \
+	fi; \
+	$$ICEPACK_CMD build/ice40_picorv32.asc build/ice40_picorv32.bin
 	@echo "✓ Bitstream packed: build/ice40_picorv32.bin"
 
 # Timing analysis

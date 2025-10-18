@@ -32,12 +32,11 @@ module ice40_picorv32_top (
 );
 
     // Clock and reset management
-    // Divide 100 MHz crystal by 2 to get 50 MHz system clock (meets timing at 67.84 MHz max)
     reg clk_div = 0;
     always @(posedge EXTCLK) begin
         clk_div <= ~clk_div;
     end
-    wire clk = clk_div;
+    wire clk = clk_div;  // 50MHz system clock (100MHz / 2)
 
     reg [7:0] reset_counter = 0;
     wire global_resetn = &reset_counter;
@@ -146,7 +145,7 @@ module ice40_picorv32_top (
 
     // SRAM direct connection - no arbiter needed (bootloader handles uploads via CPU)
 
-    // *** CLEAN-ROOM SRAM Driver with COOLDOWN fix ***
+    // SRAM Driver (5-cycle, 50MHz)
     sram_driver_new sram_drv (
         .clk(clk),
         .resetn(global_resetn),
