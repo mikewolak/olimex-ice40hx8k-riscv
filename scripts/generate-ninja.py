@@ -39,10 +39,17 @@ def detect_toolchain_prefix():
 
 def has_newlib():
     """Check if toolchain has newlib support"""
-    # Try to compile a simple test that uses stdio.h
+    # Check if newlib is installed in the toolchain
     prefix = detect_toolchain_prefix()
+
+    # Check for newlib library files
+    if prefix.startswith('build/toolchain/'):
+        # Local toolchain - check for newlib installation
+        newlib_lib_path = 'build/toolchain/riscv64-unknown-elf/lib/rv32im/ilp32'
+        return os.path.exists(newlib_lib_path) and os.path.exists(f'{newlib_lib_path}/libc.a')
+
+    # System toolchain - test by compiling
     try:
-        # Check if the include path exists
         result = subprocess.run(
             [f'{prefix}gcc', '-march=rv32im', '-mabi=ilp32', '-E', '-x', 'c', '-'],
             input=b'#include <stdio.h>\nint main() { return 0; }',

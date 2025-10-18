@@ -143,6 +143,21 @@ fi
 check_toolchain
 check_fpga_tools
 
+# Check if newlib is needed and build if missing
+NEWLIB_LIB="build/toolchain/riscv64-unknown-elf/lib/rv32im/ilp32/libc.a"
+if [ ! -f "$NEWLIB_LIB" ]; then
+    echo "Newlib not found. Building newlib (this takes 30-45 minutes)..."
+    echo ""
+    make toolchain-riscv
+
+    if [ ! -f "$NEWLIB_LIB" ]; then
+        echo "ERROR: Failed to build newlib"
+        exit 1
+    fi
+    echo "✓ Newlib built successfully"
+    echo ""
+fi
+
 # Ensure Ninja is available
 NINJA=$(ensure_ninja)
 echo "Using Ninja: $NINJA"
