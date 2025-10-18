@@ -57,6 +57,23 @@ check_toolchain() {
     exit 1
 }
 
+# Check for FPGA tools and auto-download if missing
+check_fpga_tools() {
+    # Check if yosys exists
+    if command -v yosys >/dev/null 2>&1 || [ -f "downloads/oss-cad-suite/bin/yosys" ]; then
+        return 0
+    fi
+
+    echo "FPGA tools not found. Downloading..."
+    echo ""
+    make fpga-tools-download
+
+    if [ ! -f "downloads/oss-cad-suite/bin/yosys" ]; then
+        echo "ERROR: Failed to download FPGA tools"
+        exit 1
+    fi
+}
+
 # Main
 echo "========================================="
 echo "Ninja Parallel Build System"
@@ -65,6 +82,9 @@ echo ""
 
 # Check for toolchain
 check_toolchain
+
+# Check for FPGA tools
+check_fpga_tools
 
 # Ensure Ninja is available
 NINJA=$(ensure_ninja)
