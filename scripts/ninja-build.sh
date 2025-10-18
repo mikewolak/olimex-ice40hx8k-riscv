@@ -84,17 +84,13 @@ echo ""
 NEED_RISCV=0
 NEED_FPGA=0
 
-# Check for RISC-V toolchain
-for prefix in "build/toolchain/bin/riscv64-unknown-elf-" "build/toolchain/bin/riscv32-unknown-elf-" "riscv64-unknown-elf-" "riscv32-unknown-elf-"; do
-    if command -v ${prefix}gcc >/dev/null 2>&1 || [ -f "${prefix}gcc" ]; then
-        NEED_RISCV=0
-        break
-    fi
+# Check for RISC-V toolchain in LOCAL build directory only
+if [ ! -f "build/toolchain/bin/riscv64-unknown-elf-gcc" ] && [ ! -f "build/toolchain/bin/riscv32-unknown-elf-gcc" ]; then
     NEED_RISCV=1
-done
+fi
 
-# Check for FPGA tools
-if ! command -v yosys >/dev/null 2>&1 && [ ! -f "downloads/oss-cad-suite/bin/yosys" ]; then
+# Check for FPGA tools in LOCAL downloads directory only
+if [ ! -f "downloads/oss-cad-suite/bin/yosys" ]; then
     NEED_FPGA=1
 fi
 
