@@ -25,7 +25,19 @@ endif
 
 # Toolchain paths will be set explicitly in each target that needs them
 
-all: toolchain-check bootloader firmware-bare newlib-if-needed firmware-newlib bitstream upload-tool artifacts
+# Auto-select Ninja for multi-core systems (>2 CPUs)
+all:
+	@if [ $(NPROC) -gt 2 ] && command -v ninja >/dev/null 2>&1; then \
+		echo "=========================================" ; \
+		echo "Detected $(NPROC) CPU cores - using Ninja for parallel build" ; \
+		echo "=========================================" ; \
+		echo "" ; \
+		$(MAKE) ninja ; \
+	else \
+		$(MAKE) all-sequential ; \
+	fi
+
+all-sequential: toolchain-check bootloader firmware-bare newlib-if-needed firmware-newlib bitstream upload-tool artifacts
 	@echo ""
 	@echo "========================================="
 	@echo "✓ Build Complete!"
@@ -534,7 +546,7 @@ artifacts:
 	@if [ -n "$$(find firmware -name '*.bin' 2>/dev/null)" ]; then \
 		find firmware -name "*.bin" -exec cp {} artifacts/firmware/ \;; \
 		echo "✓ Copied firmware binaries to artifacts/firmware/"; \
-		find artifacts/firmware/ -name "*.bin" -exec basename {} \; | sed 's/^/  - /'; \
+		find artifacts/firmware/ -name "*.bin" -exec basename {} \; | sort | sed 's/^/  - /'; \
 	else \
 		echo "⚠ No firmware binaries found"; \
 	fi

@@ -77,10 +77,19 @@ def get_firmware_targets():
     return glob.glob('firmware/*.c')
 
 def categorize_firmware():
-    """Categorize firmware into bare metal vs newlib based on includes"""
+    """Categorize firmware into bare metal, simple newlib, and complex (with libs)"""
     bare = []
     newlib = []
+    complex_fw = []
+    complex_deps = {}  # Maps firmware name to list of (lib_name, lib_sources, include_path) tuples
     skip = ['timer_ms', 'timer_lib']  # Library files, not standalone programs
+
+    # Library definitions: name -> (sources glob, include path)
+    libraries = {
+        'incurses': (glob.glob('lib/incurses/*.c'), 'lib/incurses'),
+        'microrl': (glob.glob('lib/microrl/*.c'), 'lib/microrl'),
+        'simple_upload': (glob.glob('lib/simple_upload/*.c'), 'lib/simple_upload'),
+    }
 
     for src in glob.glob('firmware/*.c'):
         basename = os.path.basename(src).replace('.c', '')
@@ -89,16 +98,28 @@ def categorize_firmware():
         if basename in skip:
             continue
 
-        # Check if it uses standard library headers or syscalls
+        # Read source to check for dependencies
         with open(src, 'r') as f:
             content = f.read(2000)  # Read first 2000 chars
-            # If uses stdlib headers or syscalls, needs newlib
-            if any(hdr in content for hdr in ['<stdio.h>', '<stdlib.h>', '<string.h>', '<math.h>', '_write', '_read', '_sbrk']):
-                newlib.append(basename)
-            else:
-                bare.append(basename)
 
-    return bare, newlib
+        # Check if it uses external libraries
+        uses_libs = []
+        for lib_name, (lib_sources, lib_include) in libraries.items():
+            if f'lib/{lib_name}/' in content or f'{lib_name}.h' in content:
+                uses_libs.append((lib_name, lib_sources, lib_include))
+
+        if uses_libs:
+            # Complex firmware with library dependencies
+            complex_fw.append(basename)
+            complex_deps[basename] = uses_libs
+        elif any(hdr in content for hdr in ['<stdio.h>', '<stdlib.h>', '<string.h>', '<math.h>', '_write', '_read', '_sbrk']):
+            # Simple newlib firmware
+            newlib.append(basename)
+        else:
+            # Bare metal firmware
+            bare.append(basename)
+
+    return bare, newlib, complex_fw, complex_deps
 
 def generate_ninja():
     """Generate build.ninja file"""
@@ -106,13 +127,18 @@ def generate_ninja():
     nproc = get_nproc()
     prefix = detect_toolchain_prefix()
     tools = detect_fpga_tools()
-    bare_targets, newlib_targets = categorize_firmware()
+    bare_targets, newlib_targets, complex_targets, complex_deps = categorize_firmware()
 
     # Check if newlib is available
     newlib_available = has_newlib()
-    if not newlib_available and len(newlib_targets) > 0:
-        print(f"⚠ Warning: Newlib not found - skipping {len(newlib_targets)} newlib targets")
-        newlib_targets = []  # Skip newlib targets if newlib isn't available
+    if not newlib_available:
+        if len(newlib_targets) > 0:
+            print(f"⚠ Warning: Newlib not found - skipping {len(newlib_targets)} newlib targets")
+            newlib_targets = []
+        if len(complex_targets) > 0:
+            print(f"⚠ Warning: Newlib not found - skipping {len(complex_targets)} complex targets")
+            complex_targets = []
+            complex_deps = {}
 
     with open('build.ninja', 'w') as f:
         f.write("""#===============================================================================
@@ -167,6 +193,10 @@ rule cc_bare
 rule cc_newlib
   command = ${prefix}gcc $newlib_cflags -c $in -o $out
   description = Compiling (newlib) $in
+
+rule cc_newlib_with_flags
+  command = ${prefix}gcc $newlib_cflags $cflags_extra -c $in -o $out
+  description = Compiling (newlib+libs) $in
 
 rule ld_bare
   command = ${prefix}gcc $bare_ldflags -T $ldscript $in -o $out
@@ -266,7 +296,51 @@ build $firmdir/{target}.bin: objcopy $firmdir/{target}.elf
         else:
             f.write("build firmware-newlib: phony\n\n")
 
-        f.write("build firmware-all: phony firmware-bare firmware-newlib\n\n")
+        # Firmware builds (complex with libraries)
+        f.write("# Firmware (with libraries)\n")
+
+        # First, build all library object files
+        built_libs = set()
+        for target, deps in complex_deps.items():
+            for lib_name, lib_sources, lib_include in deps:
+                if lib_name not in built_libs:
+                    # Build all .c files in this library
+                    for lib_src in lib_sources:
+                        lib_obj = f"$builddir/lib_{lib_name}_{os.path.basename(lib_src).replace('.c', '.o')}"
+                        f.write(f"build {lib_obj}: cc_newlib_with_flags {lib_src}\n")
+                        f.write(f"  cflags_extra = -I{lib_include}\n\n")
+                    built_libs.add(lib_name)
+
+        # Now build complex firmware
+        for target in complex_targets:
+            deps = complex_deps[target]
+
+            # Collect all include paths
+            include_paths = ' '.join([f'-I{lib_include}' for lib_name, lib_sources, lib_include in deps])
+
+            # Collect all library object files
+            lib_objs = []
+            for lib_name, lib_sources, lib_include in deps:
+                for lib_src in lib_sources:
+                    lib_obj = f"$builddir/lib_{lib_name}_{os.path.basename(lib_src).replace('.c', '.o')}"
+                    lib_objs.append(lib_obj)
+
+            # Compile firmware with library includes
+            f.write(f"build $builddir/{target}.o: cc_newlib_with_flags $firmdir/{target}.c\n")
+            f.write(f"  cflags_extra = {include_paths}\n\n")
+
+            # Link firmware with library objects
+            all_objs = ' '.join(['$builddir/fw_start.o', f'$builddir/{target}.o'] + lib_objs)
+            f.write(f"build $firmdir/{target}.elf: ld_newlib {all_objs}\n")
+            f.write(f"  ldscript = $firmdir/linker.ld\n")
+            f.write(f"build $firmdir/{target}.bin: objcopy $firmdir/{target}.elf\n\n")
+
+        if complex_targets:
+            f.write(f"build firmware-complex: phony {' '.join([f'$firmdir/{t}.bin' for t in complex_targets])}\n\n")
+        else:
+            f.write("build firmware-complex: phony\n\n")
+
+        f.write("build firmware-all: phony firmware-bare firmware-newlib firmware-complex\n\n")
 
         # HDL synthesis
         hdl_sources = glob.glob('hdl/*.v')
@@ -331,6 +405,7 @@ default all
     print(f"  NextPNR: {tools['nextpnr']}")
     print(f"  Bare-metal firmware: {len(bare_targets)} targets")
     print(f"  Newlib firmware: {len(newlib_targets)} targets")
+    print(f"  Complex firmware (with libs): {len(complex_targets)} targets")
 
 if __name__ == '__main__':
     generate_ninja()
