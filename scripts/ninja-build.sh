@@ -105,13 +105,13 @@ if [ $NEED_RISCV -eq 1 ] || [ $NEED_FPGA -eq 1 ]; then
 
     if [ $NEED_RISCV -eq 1 ]; then
         echo "Starting RISC-V toolchain download in background..."
-        make toolchain-download > /tmp/ninja_riscv_download.log 2>&1 &
+        bash scripts/download_riscv_only.sh > /tmp/ninja_riscv_download.log 2>&1 &
         RISCV_PID=$!
     fi
 
     if [ $NEED_FPGA -eq 1 ]; then
         echo "Starting FPGA tools download in background..."
-        bash scripts/download_fpga_tools.sh > /tmp/ninja_fpga_download.log 2>&1 &
+        bash scripts/download_fpga_only.sh > /tmp/ninja_fpga_download.log 2>&1 &
         FPGA_PID=$!
     fi
 
