@@ -654,7 +654,7 @@ artifacts:
 # Ninja Parallel Build System
 # ============================================================================
 
-ninja:
+ninja: generate
 	@bash scripts/ninja-build.sh
 
 ninja-clean:

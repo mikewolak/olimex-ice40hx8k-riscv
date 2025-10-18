@@ -44,17 +44,6 @@ echo "Ninja Parallel Build System"
 echo "========================================="
 echo ""
 
-# Check if generated files exist
-if [ ! -f "build/generated/start.S" ]; then
-    echo "ERROR: Generated files not found"
-    echo ""
-    echo "Please run one of the following first:"
-    echo "  make defconfig    - Load default configuration"
-    echo "  make generate     - Generate platform files"
-    echo ""
-    exit 1
-fi
-
 # Ensure Ninja is available
 NINJA=$(ensure_ninja)
 echo "Using Ninja: $NINJA"
