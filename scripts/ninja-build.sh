@@ -38,11 +38,33 @@ ensure_ninja() {
     echo "$NINJA"
 }
 
+# Check for RISC-V toolchain
+check_toolchain() {
+    # Try different prefixes
+    for prefix in "build/toolchain/bin/riscv64-unknown-elf-" "build/toolchain/bin/riscv32-unknown-elf-" "riscv64-unknown-elf-" "riscv32-unknown-elf-"; do
+        if command -v ${prefix}gcc >/dev/null 2>&1 || [ -f "${prefix}gcc" ]; then
+            return 0
+        fi
+    done
+
+    echo "ERROR: RISC-V toolchain not found"
+    echo ""
+    echo "Please install the toolchain first:"
+    echo "  make toolchain-check     # Check and auto-download"
+    echo "  make toolchain-download  # Download prebuilt toolchain"
+    echo "  make toolchain-riscv     # Or build from source (1-2 hours)"
+    echo ""
+    exit 1
+}
+
 # Main
 echo "========================================="
 echo "Ninja Parallel Build System"
 echo "========================================="
 echo ""
+
+# Check for toolchain
+check_toolchain
 
 # Ensure Ninja is available
 NINJA=$(ensure_ninja)
