@@ -37,6 +37,23 @@ def detect_toolchain_prefix():
             return prefix
     return 'riscv64-unknown-elf-'
 
+def has_newlib():
+    """Check if toolchain has newlib support"""
+    # Try to compile a simple test that uses stdio.h
+    prefix = detect_toolchain_prefix()
+    try:
+        # Check if the include path exists
+        result = subprocess.run(
+            [f'{prefix}gcc', '-march=rv32im', '-mabi=ilp32', '-E', '-x', 'c', '-'],
+            input=b'#include <stdio.h>\nint main() { return 0; }',
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5
+        )
+        return result.returncode == 0
+    except:
+        return False
+
 def detect_fpga_tools():
     """Detect FPGA tool paths"""
     tools = {}
@@ -90,6 +107,12 @@ def generate_ninja():
     prefix = detect_toolchain_prefix()
     tools = detect_fpga_tools()
     bare_targets, newlib_targets = categorize_firmware()
+
+    # Check if newlib is available
+    newlib_available = has_newlib()
+    if not newlib_available and len(newlib_targets) > 0:
+        print(f"⚠ Warning: Newlib not found - skipping {len(newlib_targets)} newlib targets")
+        newlib_targets = []  # Skip newlib targets if newlib isn't available
 
     with open('build.ninja', 'w') as f:
         f.write("""#===============================================================================
